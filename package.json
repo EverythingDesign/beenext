@@ -1,0 +1,22 @@
+{
+  "name": "kandou-webflow-code",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Custom JavaScript development and production builds for Kandou's Webflow site.",
+  "type": "module",
+  "scripts": {
+    "kill": "sh -c 'for port in 3000 3001; do pids=$(lsof -ti tcp:$port); if [ -n \"$pids\" ]; then kill $pids; fi; done'",
+    "dev": "npm run kill && concurrently --kill-others --names http,https --prefix-colors cyan,green \"serve codes --listen 3000 --cors\" \"local-ssl-proxy --source 3001 --target 3000 --cert localhost.pem --key localhost-key.pem\"",
+    "build": "node build.js",
+    "watch": "node build.js --watch"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "esbuild": "^0.25.9",
+    "local-ssl-proxy": "^2.0.5",
+    "serve": "^14.2.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
