@@ -1,4 +1,4 @@
-# Kandou Webflow code
+# Beenext Webflow code
 
 This repository contains the custom JavaScript used by the Kandou Webflow site.
 

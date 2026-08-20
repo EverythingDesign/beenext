@@ -205,7 +205,7 @@ function initBeliefSystemTextAnimation() {
   
 }
 document.addEventListener("DOMContentLoaded", () => {
-  initBeliefSystemTextAnimation();
+  // initBeliefSystemTextAnimation();
 })
 
 
@@ -213,7 +213,8 @@ document.addEventListener("DOMContentLoaded", () => {
 function openFounderNote() {
   const founderNote = document.querySelector(".founder_note_fixed");
   const founderNoteTrigger = document.querySelector("[open-founder-note]");
-  const founderNoteClose = document.querySelectorAll("[close-founder-note]");
+  const founderNoteClose =
+    founderNote?.querySelectorAll("[close-founder-note]") || [];
   const founderNoteInner = founderNote?.querySelector(".founder_note_inner");
 
   if (!founderNote || !founderNoteTrigger || !founderNoteInner) return;
@@ -270,6 +271,163 @@ function openFounderNote() {
 }
 
 openFounderNote();
+
+function openYouTubePopup() {
+  const popup = document.querySelector(".yt-popup_fixed");
+  const popupTrigger = document.querySelector("#popup-our-roots[yt-link]");
+  const popupInner = popup?.querySelector(".yt_popup_inner");
+  const popupFrame = popup?.querySelector(".yt-popup_frame-wrap");
+  const popupCloseButtons = popup?.querySelectorAll(
+    "[close-yt-popup]",
+  );
+
+  if (!popup || !popupTrigger || !popupInner || !popupFrame) return;
+
+  let isOpen = false;
+  let openFrame = null;
+  let closeTimer = null;
+  let shouldResumeBackgroundAudio = false;
+
+  function pauseBackgroundAudio() {
+    if (typeof AudioManager === "undefined") return;
+
+    if (AudioManager.isBgmPlaying) {
+      shouldResumeBackgroundAudio = true;
+      AudioManager.bgm.pause();
+    }
+  }
+
+  function resumeBackgroundAudio() {
+    if (
+      typeof AudioManager === "undefined" ||
+      !shouldResumeBackgroundAudio
+    ) return;
+
+    shouldResumeBackgroundAudio = false;
+
+    if (!AudioManager.isMuted && !AudioManager.bgm.playing()) {
+      AudioManager.bgm.play();
+    }
+  }
+
+  function getYouTubeEmbedUrl(link) {
+    try {
+      const url = new URL(link);
+      const hostname = url.hostname.replace(/^www\./, "");
+      let videoId = "";
+
+      if (hostname === "youtu.be") {
+        videoId = url.pathname.split("/").filter(Boolean)[0] || "";
+      } else if (
+        hostname === "youtube.com" ||
+        hostname === "m.youtube.com"
+      ) {
+        const pathParts = url.pathname.split("/").filter(Boolean);
+
+        if (url.pathname === "/watch") {
+          videoId = url.searchParams.get("v") || "";
+        } else if (["embed", "shorts", "live"].includes(pathParts[0])) {
+          videoId = pathParts[1] || "";
+        }
+      }
+
+      if (!videoId) return null;
+
+      const embedUrl = new URL(
+        `https://www.youtube.com/embed/${encodeURIComponent(videoId)}`,
+      );
+      embedUrl.searchParams.set("autoplay", "1");
+      embedUrl.searchParams.set("playsinline", "1");
+      embedUrl.searchParams.set("rel", "0");
+
+      return embedUrl.toString();
+    } catch {
+      return null;
+    }
+  }
+
+  function createYouTubeIframe(embedUrl) {
+    const iframe = document.createElement("iframe");
+
+    iframe.classList.add("yt-popup_iframe");
+    iframe.src = embedUrl;
+    iframe.title = popupTrigger.getAttribute("aria-label") || "YouTube video";
+    iframe.allow =
+      "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+    iframe.allowFullscreen = true;
+    iframe.referrerPolicy = "strict-origin-when-cross-origin";
+    iframe.setAttribute("loading", "eager");
+
+    Object.assign(iframe.style, {
+      width: "100%",
+      height: "100%",
+      border: "0",
+    });
+
+    return iframe;
+  }
+
+  function open() {
+    if (isOpen) return;
+
+    const embedUrl = getYouTubeEmbedUrl(popupTrigger.getAttribute("yt-link"));
+
+    if (!embedUrl) {
+      console.warn("YouTube popup: a valid yt-link was not found.");
+      return;
+    }
+
+    isOpen = true;
+    clearTimeout(closeTimer);
+    closeTimer = null;
+
+    popupFrame.replaceChildren(createYouTubeIframe(embedUrl));
+    popup.style.display = "flex";
+    window.lenis?.stop();
+    pauseBackgroundAudio();
+
+    openFrame = requestAnimationFrame(() => {
+      openFrame = null;
+      if (!isOpen) return;
+
+      popupInner.classList.add("is-open");
+    });
+  }
+
+  function close() {
+    if (!isOpen) return;
+
+    isOpen = false;
+
+    if (openFrame !== null) {
+      cancelAnimationFrame(openFrame);
+      openFrame = null;
+    }
+
+    popupInner.classList.remove("is-open");
+
+    closeTimer = setTimeout(() => {
+      closeTimer = null;
+      if (isOpen) return;
+
+      popup.style.display = "none";
+      popupFrame.replaceChildren();
+      window.lenis?.start();
+      resumeBackgroundAudio();
+    }, 400);
+  }
+
+  popupTrigger.addEventListener("click", open);
+  popupCloseButtons?.forEach((closeButton) => {
+    closeButton.addEventListener("click", close);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") close();
+  });
+}
+
+openYouTubePopup();
 
 // The Belief System Section (Card Accordion)
 function initBeliefCardAccordion() {
@@ -820,5 +978,328 @@ function initCommunityAnimation() {
 }
 
 initCommunityAnimation();
+
+function initBeeNetworkTabs() {
+  const isMobile = window.matchMedia("(max-width: 767px)").matches;
+
+  document.querySelectorAll(".bee-network-grid_wrap").forEach((networkGrid) => {
+    const triggerContainer = networkGrid.querySelector(
+      ".bee-network-triggers",
+    );
+    const triggers = Array.from(
+      networkGrid.querySelectorAll(
+        ".bee-network-triggers .bee-network-trigger",
+      ),
+    );
+    const contents = Array.from(
+      networkGrid.querySelectorAll(
+        ".bee-network-content_wrap > .bee-network-content",
+      ),
+    );
+    const triggerOuters = triggers.map((trigger) =>
+      trigger.closest(".bee-network-trigger_outer"),
+    );
+
+    if (
+      !triggerContainer ||
+      !triggers.length ||
+      triggerOuters.some((triggerOuter) => !triggerOuter) ||
+      !contents.length
+    ) return;
+
+    let triggerSwiper = null;
+
+    function setActiveNetworkItem(activeIndex) {
+      triggers.forEach((trigger, index) => {
+        const isActive = index === activeIndex;
+
+        triggerOuters[index].classList.toggle("is-active", isActive);
+        trigger.setAttribute("aria-pressed", String(isActive));
+      });
+
+      contents.forEach((content, index) => {
+        content.classList.toggle("is-active", index === activeIndex);
+      });
+    }
+
+    triggerOuters.forEach((triggerOuter, index) => {
+      triggerOuter.addEventListener("click", () => {
+        if (!contents[index]) return;
+        setActiveNetworkItem(index);
+        triggerSwiper?.slideToLoop(index);
+      });
+    });
+
+    const initialActiveIndex = triggerOuters.findIndex((triggerOuter) =>
+      triggerOuter.classList.contains("is-active"),
+    );
+    const startingIndex = initialActiveIndex >= 0 ? initialActiveIndex : 0;
+
+    setActiveNetworkItem(startingIndex);
+
+    if (!isMobile) return;
+
+    if (!window.Swiper) {
+      console.warn("Bee network tabs: Swiper must load first.");
+      return;
+    }
+
+    const triggerWrapper = document.createElement("div");
+    triggerWrapper.classList.add(
+      "bee-network-trigger_swiper-wrapper",
+      "swiper-wrapper",
+    );
+
+    Object.assign(triggerContainer.style, {
+      overflow: "hidden",
+      touchAction: "pan-y",
+    });
+
+    Object.assign(triggerWrapper.style, {
+      position: "relative",
+      zIndex: "1",
+      display: "flex",
+      alignItems: "flex-end",
+      width: "100%",
+      transitionProperty: "transform",
+      boxSizing: "content-box",
+    });
+
+    triggerOuters.forEach((triggerOuter) => {
+      triggerOuter.classList.add("swiper-slide");
+      Object.assign(triggerOuter.style, {
+        flexShrink: "0",
+        width: "max-content",
+      });
+      triggerWrapper.appendChild(triggerOuter);
+    });
+
+    triggerContainer.appendChild(triggerWrapper);
+
+    const swiperNavigator = networkGrid.querySelector(
+      ".bee-network-swiper-navigator",
+    );
+    const previousButton = swiperNavigator?.querySelector(
+      ".chevron-arrow_previous",
+    );
+    const nextButton = swiperNavigator?.querySelector(
+      ".chevron-arrow_next",
+    );
+    const pagination = swiperNavigator?.querySelector(".swiper-pagination");
+
+    triggerSwiper = new window.Swiper(triggerContainer, {
+      slidesPerView: "auto",
+      centeredSlides: true,
+      loop: true,
+      initialSlide: startingIndex,
+      spaceBetween: 16,
+      speed: 500,
+      navigation: {
+        prevEl: previousButton,
+        nextEl: nextButton,
+      },
+      pagination: {
+        el: pagination,
+        type: "fraction",
+      },
+      on: {
+        realIndexChange(swiper) {
+          setActiveNetworkItem(swiper.realIndex);
+        },
+      },
+    });
+  });
+}
+
+initBeeNetworkTabs();
+
+function initPortfolioSwiper() {
+  const portfolioSlider = document.querySelector(
+    "#portfolio .portfolio-list-wrapper.swiper",
+  );
+
+  if (!portfolioSlider) return;
+
+  if (!window.Swiper) {
+    console.warn("Portfolio slider: Swiper must load first.");
+    return;
+  }
+
+  const portfolioWrapper = portfolioSlider.querySelector(
+    ":scope > .portfolio-list.swiper-wrapper",
+  );
+  const portfolioSlides = portfolioWrapper?.querySelectorAll(
+    ":scope > .portfolio-item.swiper-slide",
+  );
+
+  if (!portfolioWrapper || !portfolioSlides?.length) return;
+
+
+  const portfolioSwiper = new window.Swiper(portfolioSlider, {
+    slidesPerView: 1.5,
+    centeredSlides: true,
+    initialSlide: 2,
+    spaceBetween: 16,
+    speed: 500,
+    watchOverflow: true,
+    mousewheel: {
+      enabled: true,
+      forceToAxis: true,
+    },
+    breakpoints: {
+      480: {
+        slidesPerView: 1.75,
+      },
+      768: {
+        slidesPerView: 2.5,
+      },
+      992: {
+        slidesPerView: 5.5,
+      },
+      1440: {
+        slidesPerView: 4.5,
+      },
+    },
+  });
+
+  if (!window.gsap || !window.ScrollTrigger) {
+    console.warn(
+      "Portfolio entrance animation: GSAP and ScrollTrigger must load first.",
+    );
+    return;
+  }
+
+  const { gsap, ScrollTrigger } = window;
+  const prefersReducedMotion = window.matchMedia(
+    "(prefers-reduced-motion: reduce)",
+  ).matches;
+
+  gsap.registerPlugin(ScrollTrigger);
+
+  if (prefersReducedMotion) return;
+
+  requestAnimationFrame(() => {
+    portfolioSwiper.update();
+
+    const activeSlide = portfolioSlides[portfolioSwiper.activeIndex];
+    if (!activeSlide) return;
+
+    const activeRect = activeSlide.getBoundingClientRect();
+    const activeCenter = activeRect.left + activeRect.width / 2;
+
+    portfolioSlides.forEach((portfolioSlide, index) => {
+      const slideRect = portfolioSlide.getBoundingClientRect();
+      const slideCenter = slideRect.left + slideRect.width / 2;
+
+      gsap.set(portfolioSlide, {
+        x: activeCenter - slideCenter,
+        zIndex:
+          portfolioSlides.length -
+          Math.abs(index - portfolioSwiper.activeIndex),
+        willChange: "transform",
+      });
+    });
+
+    gsap.to(portfolioSlides, {
+      x: 0,
+      duration: 1.2,
+      ease: "power3.inOut",
+      stagger: {
+        each: 0.08,
+        from: portfolioSwiper.activeIndex,
+      },
+      scrollTrigger: {
+        trigger: "#portfolio",
+        start: "top center",
+        toggleActions: "play none none reverse",
+      },
+    });
+  });
+}
+
+initPortfolioSwiper();
+
+function initFounderStories() {
+  const section = document.querySelector("#highlight-stories");
+  const storyItems = section?.querySelectorAll(".founders-stories-item");
+
+  if (!section || !storyItems?.length) return;
+
+  function setActiveStory(activeStory) {
+    storyItems.forEach((storyItem) => {
+      const isActive = storyItem === activeStory;
+      storyItem.classList.toggle("is-active", isActive);
+      storyItem.setAttribute("aria-expanded", String(isActive));
+    });
+  }
+
+  function enableStoryClicks() {
+    storyItems.forEach((storyItem) => {
+      storyItem.addEventListener("click", () => {
+        setActiveStory(storyItem);
+      });
+    });
+  }
+
+  if (!window.gsap || !window.ScrollTrigger) {
+    console.warn(
+      "Founder stories animation: GSAP and ScrollTrigger must load first.",
+    );
+    setActiveStory(storyItems[0]);
+    enableStoryClicks();
+    return;
+  }
+
+  const { gsap, ScrollTrigger } = window;
+  const prefersReducedMotion = window.matchMedia(
+    "(prefers-reduced-motion: reduce)",
+  ).matches;
+
+  gsap.registerPlugin(ScrollTrigger);
+
+  if (prefersReducedMotion) {
+    setActiveStory(storyItems[0]);
+    enableStoryClicks();
+    return;
+  }
+
+  gsap.set(storyItems, {
+    opacity: 0,
+    willChange: "opacity",
+  });
+
+  const storyStagger = 0.15;
+  const storyTimeline = gsap.timeline({
+    scrollTrigger: {
+      trigger: section,
+      start: "top center",
+      once: true,
+    },
+  });
+
+  storyTimeline.to(storyItems, {
+    opacity: 1,
+    duration: 0.6,
+    ease: "power2.out",
+    stagger: storyStagger,
+  });
+
+  storyTimeline.call(
+    () => {
+      gsap.set(storyItems, { clearProps: "opacity,willChange" });
+      enableStoryClicks();
+    },
+    null,
+    ">",
+  );
+
+  storyTimeline.call(
+    () => setActiveStory(storyItems[0]),
+    null,
+    (storyItems.length - 1) * storyStagger,
+  );
+}
+
+initFounderStories();
 
 // Belief System Text Animation
