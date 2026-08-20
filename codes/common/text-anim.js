@@ -37,7 +37,7 @@ function initSectionTextAnimation() {
       {
         yPercent: 0,
         opacity: 1,
-        duration: 0.5,
+        duration: 1,
         ease: "power4.out",
         stagger: 0.06,
       },
@@ -68,14 +68,14 @@ function initSectionTextAnimation() {
         .to(sectionEyebrow, {
           x: 0,
           opacity: 1,
-          duration: 0.7,
+          duration: 1,
           ease: "power3.out",
         })
         .to(
           eyebrowChars,
           {
             opacity: 1,
-            duration: 0.6,
+            duration: 1,
             ease: "power3.out",
             stagger: 0.02,
           },
@@ -85,8 +85,47 @@ function initSectionTextAnimation() {
   });
 }
 
+function initSectionBlockAnimation(){
+    if (!window.gsap || !window.ScrollTrigger) {
+    console.warn(
+      "Section text animation: GSAP and ScrollTrigger must load first.",
+    );
+    return;
+  }
+
+  const { gsap, ScrollTrigger } = window;
+  const prefersReducedMotion = window.matchMedia(
+    "(prefers-reduced-motion: reduce)",
+  ).matches;
+
+  gsap.registerPlugin(ScrollTrigger);
+
+  document.querySelectorAll("[section-block]").forEach((sectionBlock) => {
+    if (prefersReducedMotion) {
+      gsap.set(sectionBlock, { opacity: 1 });
+      return;
+    }
+
+    const timeline = gsap.timeline({
+      scrollTrigger: {
+        trigger: sectionBlock,
+        start: "top 90%",
+        end: "top center",
+        scrub: 1.2,
+      },
+    });
+    timeline.from(sectionBlock, {
+        opacity: 0,
+        yPercent: 10,
+        duration: 1,
+        ease: "power3.out",
+    });
+  })
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     document.fonts.ready.then(() => {
         initSectionTextAnimation();
+        initSectionBlockAnimation();
     })
 });
