@@ -51,7 +51,7 @@ function initInnovationStoryTextFade(triggerName) {
         scrollTrigger: {
           trigger,
           start: "top 80%",
-          end: "top 20%",
+          end: "bottom 95%",
           scrub: 1,
           invalidateOnRefresh: true,
         },
