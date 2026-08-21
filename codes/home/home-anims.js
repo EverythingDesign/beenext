@@ -204,9 +204,6 @@ function initBeliefSystemTextAnimation() {
   })
   
 }
-document.addEventListener("DOMContentLoaded", () => {
-  // initBeliefSystemTextAnimation();
-})
 
 
 // Open founder note
@@ -270,7 +267,6 @@ function openFounderNote() {
   });
 }
 
-openFounderNote();
 
 function openYouTubePopup() {
   const popup = document.querySelector(".yt-popup_fixed");
@@ -427,7 +423,6 @@ function openYouTubePopup() {
   });
 }
 
-openYouTubePopup();
 
 // The Belief System Section (Card Accordion)
 function initBeliefCardAccordion() {
@@ -472,7 +467,6 @@ function initBeliefCardAccordion() {
   });
 }
 
-initBeliefCardAccordion();
 
 // Bee Network mobile slider and desktop click sequence
 function initBeeNetworkAnimation() {
@@ -692,7 +686,6 @@ function initBeeNetworkAnimation() {
   });
 }
 
-initBeeNetworkAnimation();
 
 function initCommunityAnimation() {
   const isMobile = window.matchMedia("(max-width: 767px)").matches;
@@ -977,8 +970,6 @@ function initCommunityAnimation() {
   });
 }
 
-initCommunityAnimation();
-
 function initBeeNetworkTabs() {
   const isMobile = window.matchMedia("(max-width: 767px)").matches;
 
@@ -1008,18 +999,169 @@ function initBeeNetworkTabs() {
     ) return;
 
     let triggerSwiper = null;
+    let currentActiveIndex = -1;
+    let contentTimeline = null;
+    let contentAnimationReady = false;
+    let networkGridIsInView = false;
 
-    function setActiveNetworkItem(activeIndex) {
+    function getContentAnimationTargets(content) {
+      const heading = content.querySelector("[bee-network-heading]");
+      const paragraph = content.querySelector("[bee-network-para]");
+      const splitHeadingWords = Array.from(
+        heading?.querySelectorAll(".word") || [],
+      );
+      const splitParagraphWords = Array.from(
+        paragraph?.querySelectorAll(".word") || [],
+      );
+      const headingTargets = splitHeadingWords.length
+        ? splitHeadingWords
+        : [heading?.firstElementChild || heading].filter(Boolean);
+      const paragraphTargets = splitParagraphWords.length
+        ? splitParagraphWords
+        : [paragraph?.firstElementChild || paragraph].filter(Boolean);
+      const cta = content.querySelector("[bee-network-cta]");
+      const ctaTarget = cta?.closest(".button_main_wrap") || cta;
+
+      return { headingTargets, paragraphTargets, ctaTarget };
+    }
+
+    function animateActiveNetworkContent(index) {
+      if (!contentAnimationReady || !networkGridIsInView) return;
+
+      const content = contents[index];
+      if (!content) return;
+
+      const { headingTargets, paragraphTargets, ctaTarget } =
+        getContentAnimationTargets(content);
+
+      contentTimeline?.kill();
+
+      gsap.set(headingTargets, {
+        yPercent: 110,
+        opacity: 0,
+      });
+      gsap.set(paragraphTargets, { opacity: 0 });
+      if (ctaTarget) gsap.set(ctaTarget, { y: 16, opacity: 0 });
+
+      contentTimeline = gsap.timeline({
+        defaults: { overwrite: "auto" },
+      });
+
+      contentTimeline
+        .to(headingTargets, {
+          yPercent: 0,
+          opacity: 1,
+          duration: 0.5,
+          ease: "power4.out",
+          stagger: 0.06,
+        })
+        .to(
+          paragraphTargets,
+          {
+            opacity: 1,
+            duration: 0.5,
+            ease: "power2.out",
+            stagger: 0.025,
+          },
+          "<0.2",
+        );
+
+      if (ctaTarget) {
+        contentTimeline.to(
+          ctaTarget,
+          {
+            y: 0,
+            opacity: 1,
+            duration: 0.45,
+            ease: "power3.out",
+          },
+          "<0.15",
+        );
+      }
+    }
+
+    function setupContentAnimation() {
+      if (!window.gsap || !window.ScrollTrigger) {
+        console.warn(
+          "Bee network content animation: GSAP and ScrollTrigger must load first.",
+        );
+        return;
+      }
+
+      const prefersReducedMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+
+      gsap.registerPlugin(ScrollTrigger);
+
+      contents.forEach((content) => {
+        const { headingTargets, paragraphTargets, ctaTarget } =
+          getContentAnimationTargets(content);
+        const targets = [
+          ...headingTargets,
+          ...paragraphTargets,
+          ctaTarget,
+        ].filter(Boolean);
+
+        if (prefersReducedMotion) {
+          gsap.set(targets, { clearProps: "opacity,transform,willChange" });
+          return;
+        }
+
+        gsap.set(headingTargets, {
+          yPercent: 110,
+          opacity: 0,
+          willChange: "transform,opacity",
+        });
+        gsap.set(paragraphTargets, {
+          opacity: 0,
+          willChange: "opacity",
+        });
+        if (ctaTarget) {
+          gsap.set(ctaTarget, {
+            y: 16,
+            opacity: 0,
+            willChange: "transform,opacity",
+          });
+        }
+      });
+
+      if (prefersReducedMotion) return;
+
+      contentAnimationReady = true;
+
+      ScrollTrigger.create({
+        trigger: networkGrid,
+        start: "top 85%",
+        once: true,
+        onEnter: () => {
+          networkGridIsInView = true;
+          animateActiveNetworkContent(currentActiveIndex);
+        },
+      });
+
+      ScrollTrigger.refresh();
+    }
+
+    function setActiveNetworkItem(nextActiveIndex) {
+      const activeItemChanged = nextActiveIndex !== currentActiveIndex;
+
       triggers.forEach((trigger, index) => {
-        const isActive = index === activeIndex;
+        const isActive = index === nextActiveIndex;
 
         triggerOuters[index].classList.toggle("is-active", isActive);
         trigger.setAttribute("aria-pressed", String(isActive));
       });
 
       contents.forEach((content, index) => {
-        content.classList.toggle("is-active", index === activeIndex);
+        content.classList.toggle("is-active", index === nextActiveIndex);
       });
+
+      currentActiveIndex = nextActiveIndex;
+
+      if (activeItemChanged) {
+        animateActiveNetworkContent(nextActiveIndex);
+      }
     }
 
     triggerOuters.forEach((triggerOuter, index) => {
@@ -1036,6 +1178,11 @@ function initBeeNetworkTabs() {
     const startingIndex = initialActiveIndex >= 0 ? initialActiveIndex : 0;
 
     setActiveNetworkItem(startingIndex);
+
+    const fontsReady = document.fonts?.ready || Promise.resolve();
+    fontsReady.then(() => {
+      requestAnimationFrame(setupContentAnimation);
+    });
 
     if (!isMobile) return;
 
@@ -1062,7 +1209,6 @@ function initBeeNetworkTabs() {
       alignItems: "flex-end",
       width: "100%",
       transitionProperty: "transform",
-      boxSizing: "content-box",
     });
 
     triggerOuters.forEach((triggerOuter) => {
@@ -1110,8 +1256,6 @@ function initBeeNetworkTabs() {
     });
   });
 }
-
-initBeeNetworkTabs();
 
 function initPortfolioSwiper() {
   const portfolioSlider = document.querySelector(
@@ -1217,8 +1361,6 @@ function initPortfolioSwiper() {
   });
 }
 
-initPortfolioSwiper();
-
 function initFounderStories() {
   const section = document.querySelector("#highlight-stories");
   const storyItems = section?.querySelectorAll(".founders-stories-item");
@@ -1300,6 +1442,18 @@ function initFounderStories() {
   );
 }
 
-initFounderStories();
 
-// Belief System Text Animation
+
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.fonts?.ready.then(() => {
+    openFounderNote();
+    openYouTubePopup();
+    initBeliefCardAccordion();
+    initBeeNetworkAnimation();
+    initCommunityAnimation();
+    initFounderStories();
+    initPortfolioSwiper();
+    initBeeNetworkTabs();
+  })
+});
