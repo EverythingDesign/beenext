@@ -116,7 +116,7 @@ function initFooterLinksAnimation() {
       scrollTrigger: {
         trigger: footer,
         start: "top 80%",
-        end: "bottom bottom",
+        end: "top 20%",
         scrub: true,
       },
     })
