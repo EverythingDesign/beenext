@@ -1,5 +1,4 @@
 // Fade In Text Animation
-
 function initInnovationStoryTextFade(triggerName) {
   const section = document.querySelector("#innovation-stories");
   const fadeText = section?.querySelector("[fade-text]");
@@ -51,7 +50,7 @@ function initInnovationStoryTextFade(triggerName) {
         scrollTrigger: {
           trigger,
           start: "top 30%",
-          end: "bottom 80%",
+          end: "bottom bottom",
           scrub: 1,
           invalidateOnRefresh: true,
         },

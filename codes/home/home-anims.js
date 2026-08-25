@@ -81,13 +81,15 @@
   window.addEventListener("load", () => ScrollTrigger.refresh(), { once: true });
 })();
 
+let rememberedBeliefCard = null;
+
 function initBeliefSystemTextAnimation() {
-  const mountain = document.querySelector(".mountain-img-wrap");
+  const mountain = document.querySelector(".bonsai-img-outer");
   const mountainStartY = mountain
     ? Number(gsap.getProperty(mountain, "yPercent")) || 0
     : 0;
   const mountainMotion = {
-    beliefOffset: 0,
+    beliefOffset: 5,
     cardOffset: 0,
   };
 
@@ -101,11 +103,14 @@ function initBeliefSystemTextAnimation() {
         mountainMotion.cardOffset,
     });
   }
+
+  renderMountainPosition();
+
   const beliefTimeline = gsap.timeline({
     scrollTrigger: {
       trigger: ".belief-system-section",
       start: "top 80%",
-      end: "top top",
+      end: "top 10%",
       scrub: 1.2
     },
   });
@@ -158,51 +163,567 @@ function initBeliefSystemTextAnimation() {
       ease: "power4.out",
       stagger: 0.06,
     }
-  )
-  .to(
-    mountainMotion,
-    {
-      beliefOffset: -50,
-      duration: 1,
-      ease: "none",
-      onUpdate: renderMountainPosition,
-    },"<0.8"
-  )
-  const beliefSystemTimeline = gsap.timeline({
-    scrollTrigger: {
+  );
+
+  const beliefHeading = document.querySelector(".belief_heading");
+  const beliefCards = gsap.utils.toArray(".belief-card");
+  const firstCard = beliefCards[0];
+  const beliefMedia = gsap.matchMedia();
+
+  function setRememberedBeliefCardActive(isActive) {
+    const cardToOpen = beliefCards.includes(rememberedBeliefCard)
+      ? rememberedBeliefCard
+      : firstCard;
+
+    beliefCards.forEach((card) => {
+      const dropdownOuter = card.querySelector(".card_dd_outer");
+      const dropdownInner = card.querySelector(".card_dd_inner");
+      const shouldOpen = isActive && card === cardToOpen;
+
+      card.classList.toggle("is-active", shouldOpen);
+      card.classList.toggle("is-open", shouldOpen);
+
+      if (dropdownOuter) {
+        dropdownOuter.style.height =
+          shouldOpen && dropdownInner
+            ? `${dropdownInner.scrollHeight}px`
+            : "0px";
+      }
+    });
+  }
+
+  beliefMedia.add("(min-width: 992px)", () => {
+    beliefTimeline.to(
+      mountainMotion,
+      {
+        beliefOffset: -10,
+        duration: 1,
+        ease: "none",
+        onUpdate: renderMountainPosition,
+      },
+      "<0.8",
+    );
+
+    const beliefSystemTimeline = gsap.timeline({
+      paused: true,
+      onComplete: () => setRememberedBeliefCardActive(true),
+      onReverseComplete: () => setRememberedBeliefCardActive(false),
+    });
+
+    beliefSystemTimeline
+      .to(
+        beliefHeading,
+        {
+          opacity: 0.15,
+          duration: 1,
+          ease: "power4.out",
+        },
+        "<",
+      )
+      .from(beliefCards, {
+        opacity: 0,
+        stagger: 0.2,
+        duration: 0.5,
+        ease: "none",
+      });
+
+    let beliefSystemDirection = 1;
+    const playBeliefSystem = () =>
+      beliefSystemTimeline.timeScale(1).play();
+    const reverseBeliefSystem = () =>
+      beliefSystemTimeline.timeScale(1.5).reverse();
+
+    const beliefSystemTrigger = ScrollTrigger.create({
       trigger: ".belief-system-trigger",
       start: "top 95%",
-      toggleActions: "play none none reverse",
-    },
+      end: "top top",
+      onEnter: playBeliefSystem,
+      onEnterBack: reverseBeliefSystem,
+      onUpdate: (self) => {
+        if (self.direction === beliefSystemDirection) return;
+
+        beliefSystemDirection = self.direction;
+
+        if (self.direction < 0 && beliefSystemTimeline.progress() > 0) {
+          reverseBeliefSystem();
+        } else if (
+          self.direction > 0 &&
+          self.progress > 0
+        ) {
+          playBeliefSystem();
+        }
+      },
+      onLeaveBack: reverseBeliefSystem,
+    });
+
+    const syncFrame = requestAnimationFrame(() => {
+      if (beliefSystemTrigger.progress > 0) {
+        beliefSystemTimeline.progress(1, true);
+        setRememberedBeliefCardActive(true);
+      } else {
+        beliefSystemTimeline.pause(0, true);
+        setRememberedBeliefCardActive(false);
+      }
+    });
+
+    return () => {
+      cancelAnimationFrame(syncFrame);
+      beliefSystemTrigger.kill();
+      beliefSystemTimeline.kill();
+      setRememberedBeliefCardActive(false);
+    };
   });
 
-  beliefSystemTimeline
-  .to(mountainMotion, {
-      cardOffset: -20,
+  beliefMedia.add("(max-width: 991px)", () => {
+    gsap.set(beliefHeading, { opacity: 1 });
+
+    const beliefCardTimeline = gsap.timeline({
+      paused: true,
+      onComplete: () => setRememberedBeliefCardActive(true),
+      onReverseComplete: () => setRememberedBeliefCardActive(false),
+    });
+
+    beliefCardTimeline
+      .from(beliefCards, {
+        opacity: 0,
+        stagger: 0.2,
+        duration: 0.5,
+        ease: "none",
+      });
+
+    let beliefCardDirection = 1;
+    const playBeliefCards = () => beliefCardTimeline.timeScale(1).play();
+    const reverseBeliefCards = () =>
+      beliefCardTimeline.timeScale(1.5).reverse();
+
+    const beliefCardTrigger = ScrollTrigger.create({
+      trigger: ".belief-system-section",
+      start: "top center",
+      end: "top top",
+      onLeave: playBeliefCards,
+      onEnterBack: reverseBeliefCards,
+      onUpdate: (self) => {
+        if (self.direction === beliefCardDirection) return;
+
+        beliefCardDirection = self.direction;
+
+        if (self.direction < 0 && beliefCardTimeline.progress() > 0) {
+          reverseBeliefCards();
+        } else if (
+          self.direction > 0 &&
+          beliefCardTimeline.progress() > 0
+        ) {
+          playBeliefCards();
+        }
+      },
+      onLeaveBack: reverseBeliefCards,
+    });
+
+    const syncFrame = requestAnimationFrame(() => {
+      if (beliefCardTrigger.progress === 1) {
+        beliefCardTimeline.progress(1, true);
+        setRememberedBeliefCardActive(true);
+      } else {
+        beliefCardTimeline.pause(0, true);
+        setRememberedBeliefCardActive(false);
+      }
+    });
+
+    return () => {
+      cancelAnimationFrame(syncFrame);
+      beliefCardTrigger.kill();
+      beliefCardTimeline.kill();
+      setRememberedBeliefCardActive(false);
+    };
+  });
+
+}
+
+async function initBonsaiWebGPUVideo() {
+  const outer = document.querySelector(".bonsai-img-outer");
+  const trigger = document.querySelector(".belief-system-trigger");
+  const beliefSection = document.querySelector(".belief-system-section");
+
+  if (
+    !outer ||
+    !trigger ||
+    !beliefSection ||
+    !window.gsap ||
+    !window.ScrollTrigger
+  ) return;
+
+  const fallbackImage = outer.querySelector(".visual_mountain_colored");
+  const existingVideo = outer.querySelector("video[data-bonsai-video]");
+  const webmSource = outer.getAttribute("video-url-webm");
+  const mp4Source = outer.getAttribute("video-url-mp4");
+  const directVideoSource =
+    outer.dataset.bonsaiVideoSrc ||
+    outer.dataset.videoSrc ||
+    existingVideo?.currentSrc ||
+    existingVideo?.getAttribute("src") ||
+    existingVideo?.querySelector("source[src]")?.getAttribute("src");
+
+  if (!webmSource && !mp4Source && !directVideoSource) {
+    console.warn(
+      "Bonsai WebGPU video: add video-url-webm or video-url-mp4 to .bonsai-img-outer.",
+    );
+    return;
+  }
+
+  if (!navigator.gpu) {
+    console.warn("Bonsai WebGPU video: WebGPU is not available.");
+    return;
+  }
+
+  const video = existingVideo || document.createElement("video");
+  const canvasHost = outer;
+  const canvas =
+    canvasHost.querySelector("canvas.bonsai-webgpu-canvas") ||
+    document.createElement("canvas");
+
+  if (!existingVideo) {
+    video.dataset.bonsaiVideo = "";
+    outer.appendChild(video);
+  }
+
+  if (canvas.parentElement !== canvasHost) {
+    canvas.classList.add("bonsai-webgpu-canvas");
+    canvasHost.appendChild(canvas);
+  }
+
+  video.crossOrigin = "anonymous";
+  video.muted = true;
+  video.defaultMuted = true;
+  video.playsInline = true;
+  video.preload = "auto";
+  video.disablePictureInPicture = true;
+  video.setAttribute("aria-hidden", "true");
+  video.style.display = "none";
+
+  if (webmSource || mp4Source) {
+    video.removeAttribute("src");
+    video
+      .querySelectorAll("source[data-bonsai-generated-source]")
+      .forEach((source) => source.remove());
+
+    [
+      { src: webmSource, type: "video/webm" },
+      { src: mp4Source, type: "video/mp4" },
+    ].forEach(({ src, type }) => {
+      if (!src) return;
+
+      const source = document.createElement("source");
+      source.src = src;
+      source.type = type;
+      source.dataset.bonsaiGeneratedSource = "";
+      video.appendChild(source);
+    });
+  } else if (
+    directVideoSource &&
+    !video.currentSrc &&
+    video.getAttribute("src") !== directVideoSource
+  ) {
+    video.src = directVideoSource;
+  }
+
+  canvas.setAttribute("aria-hidden", "true");
+  Object.assign(canvas.style, {
+    display: "block",
+    position: "absolute",
+    left: "0",
+    bottom: "0",
+    width: "100%",
+    height: "auto",
+    maxWidth: "100%",
+    opacity: "0",
+    pointerEvents: "none",
+  });
+
+  if (window.getComputedStyle(outer).position === "static") {
+    outer.style.position = "relative";
+  }
+
+  outer.style.overflow = "visible";
+
+  function waitForVideoEvent(eventName) {
+    return new Promise((resolve, reject) => {
+      const handleSuccess = () => {
+        video.removeEventListener("error", handleError);
+        resolve();
+      };
+      const handleError = () => {
+        video.removeEventListener(eventName, handleSuccess);
+        reject(video.error || new Error("The bonsai video failed to load."));
+      };
+
+      video.addEventListener(eventName, handleSuccess, { once: true });
+      video.addEventListener("error", handleError, { once: true });
+    });
+  }
+
+  try {
+    video.load();
+
+    if (video.readyState < HTMLMediaElement.HAVE_METADATA) {
+      await waitForVideoEvent("loadedmetadata");
+    }
+
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      await waitForVideoEvent("loadeddata");
+    }
+
+    if (!Number.isFinite(video.duration) || video.duration <= 0) {
+      throw new Error("The bonsai video must have a finite duration.");
+    }
+
+    const frameWidth = Number(outer.getAttribute("video-width")) || 1440;
+    const frameHeight = Number(outer.getAttribute("video-height")) || 900;
+    canvas.style.aspectRatio = `${frameWidth} / ${frameHeight}`;
+
+    const adapter = await navigator.gpu.requestAdapter({
+      powerPreference: "high-performance",
+    });
+    if (!adapter) throw new Error("No WebGPU adapter was found.");
+
+    const device = await adapter.requestDevice();
+    const context = canvas.getContext("webgpu");
+    if (!context) throw new Error("A WebGPU canvas context could not be created.");
+
+    const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
+    context.configure({
+      device,
+      format: presentationFormat,
+      alphaMode: "premultiplied",
+    });
+
+    const shaderModule = device.createShaderModule({
+      code: `
+        struct VertexOutput {
+          @builtin(position) position: vec4f,
+          @location(0) uv: vec2f,
+        };
+
+        @vertex
+        fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+          var positions = array<vec2f, 3>(
+            vec2f(-1.0, -1.0),
+            vec2f(3.0, -1.0),
+            vec2f(-1.0, 3.0)
+          );
+
+          let position = positions[vertexIndex];
+          var output: VertexOutput;
+          output.position = vec4f(position, 0.0, 1.0);
+          output.uv = vec2f(
+            (position.x + 1.0) * 0.5,
+            (1.0 - position.y) * 0.5
+          );
+          return output;
+        }
+
+        @group(0) @binding(0) var videoSampler: sampler;
+        @group(0) @binding(1) var videoTexture: texture_external;
+
+        @fragment
+        fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
+          return textureSampleBaseClampToEdge(
+            videoTexture,
+            videoSampler,
+            input.uv
+          );
+        }
+      `,
+    });
+
+    const pipeline = device.createRenderPipeline({
+      layout: "auto",
+      vertex: {
+        module: shaderModule,
+        entryPoint: "vertexMain",
+      },
+      fragment: {
+        module: shaderModule,
+        entryPoint: "fragmentMain",
+        targets: [
+          {
+            format: presentationFormat,
+            blend: {
+              color: {
+                srcFactor: "src-alpha",
+                dstFactor: "one-minus-src-alpha",
+              },
+              alpha: {
+                srcFactor: "one",
+                dstFactor: "one-minus-src-alpha",
+              },
+            },
+          },
+        ],
+      },
+      primitive: {
+        topology: "triangle-list",
+      },
+    });
+
+    const sampler = device.createSampler({
+      magFilter: "linear",
+      minFilter: "linear",
+      addressModeU: "clamp-to-edge",
+      addressModeV: "clamp-to-edge",
+    });
+
+    let deviceIsLost = false;
+    let hasRenderedFrame = false;
+    let renderWarningShown = false;
+    let seekFrame = null;
+    let pendingVideoTime = 0;
+
+    device.lost.then(() => {
+      deviceIsLost = true;
+      canvas.style.opacity = "0";
+      if (fallbackImage) fallbackImage.style.opacity = "";
+    });
+
+    function resizeCanvas() {
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      const width = Math.max(1, Math.round(canvas.clientWidth * pixelRatio));
+      const height = Math.max(1, Math.round(canvas.clientHeight * pixelRatio));
+
+      if (canvas.width !== width) canvas.width = width;
+      if (canvas.height !== height) canvas.height = height;
+    }
+
+    function renderVideoFrame() {
+      if (deviceIsLost || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+        return;
+      }
+
+      try {
+        resizeCanvas();
+
+        // HTMLVideoElement external textures expire after use, so import the
+        // current decoded frame again for every WebGPU render.
+        const externalTexture = device.importExternalTexture({
+          source: video,
+          colorSpace: "srgb",
+        });
+        const bindGroup = device.createBindGroup({
+          layout: pipeline.getBindGroupLayout(0),
+          entries: [
+            { binding: 0, resource: sampler },
+            { binding: 1, resource: externalTexture },
+          ],
+        });
+        const commandEncoder = device.createCommandEncoder();
+        const renderPass = commandEncoder.beginRenderPass({
+          colorAttachments: [
+            {
+              view: context.getCurrentTexture().createView(),
+              clearValue: { r: 0, g: 0, b: 0, a: 0 },
+              loadOp: "clear",
+              storeOp: "store",
+            },
+          ],
+        });
+
+        renderPass.setPipeline(pipeline);
+        renderPass.setBindGroup(0, bindGroup);
+        renderPass.draw(3);
+        renderPass.end();
+        device.queue.submit([commandEncoder.finish()]);
+
+        if (!hasRenderedFrame) {
+          hasRenderedFrame = true;
+          canvas.style.opacity = "1";
+          if (fallbackImage) fallbackImage.style.opacity = "0";
+        }
+      } catch (error) {
+        if (!renderWarningShown) {
+          renderWarningShown = true;
+          console.warn("Bonsai WebGPU video: frame rendering failed.", error);
+        }
+      }
+    }
+
+    function queueVideoSeek(time) {
+      pendingVideoTime = time;
+      if (seekFrame !== null) return;
+
+      seekFrame = requestAnimationFrame(() => {
+        seekFrame = null;
+
+        if (Math.abs(video.currentTime - pendingVideoTime) < 1 / 120) {
+          renderVideoFrame();
+          return;
+        }
+
+        video.currentTime = pendingVideoTime;
+      });
+    }
+
+    const handleSeeked = () => renderVideoFrame();
+    const resizeObserver = new ResizeObserver(() => {
+      resizeCanvas();
+      renderVideoFrame();
+    });
+
+    video.addEventListener("seeked", handleSeeked);
+    resizeObserver.observe(canvasHost);
+    resizeCanvas();
+    renderVideoFrame();
+
+    const maxVideoTime = Math.max(0, video.duration - 1 / 60);
+    const videoScrub = { time: 0 };
+    const scrubTween = gsap.to(videoScrub, {
+      time: maxVideoTime,
       duration: 1,
       ease: "none",
-      onUpdate: renderMountainPosition,
-  })
-  .to(".mountain-img-wrap",{
-      filter: "grayscale(100%)",
-      duration: 1,
-      ease: "none",
-  }, "<")
-  .to(
-    ".belief_heading",
-    {
-      opacity: 0.15,
-      duration: 1,
-      ease: "power4.out",
-    },"<"
-  )
-  .from(".belief-card",{
-      opacity: 0,
-      stagger: 0.2,
-      duration: 0.5,
-      ease: "none",
-  })
-  
+      paused: true,
+      onUpdate: () => queueVideoSeek(videoScrub.time),
+    });
+
+    let scrollTrigger = null;
+    const scrubMedia = gsap.matchMedia();
+
+    scrubMedia.add(
+      {
+        mobile: "(max-width: 991px)",
+        desktop: "(min-width: 992px)",
+      },
+      (context) => {
+        const isMobile = context.conditions.mobile;
+
+        scrollTrigger = ScrollTrigger.create({
+          trigger: isMobile ? beliefSection : trigger,
+          start: isMobile ? "top center" : "top bottom",
+          end: "top top",
+          animation: scrubTween,
+          scrub: true,
+          invalidateOnRefresh: true,
+        });
+
+        return () => {
+          scrollTrigger?.kill();
+          scrollTrigger = null;
+        };
+      },
+    );
+
+    window.addEventListener(
+      "pagehide",
+      () => {
+        scrubMedia.revert();
+        scrubTween.kill();
+        resizeObserver.disconnect();
+        video.removeEventListener("seeked", handleSeeked);
+        if (seekFrame !== null) cancelAnimationFrame(seekFrame);
+      },
+      { once: true },
+    );
+  } catch (error) {
+    canvas.remove();
+    console.warn("Bonsai WebGPU video could not initialize.", error);
+  }
 }
 
 
@@ -432,6 +953,7 @@ function initBeliefCardAccordion() {
     const outer = card.querySelector(".card_dd_outer");
     if (!outer) return;
 
+    card.classList.remove("is-active");
     card.classList.remove("is-open");
     outer.style.height = "0px";
   }
@@ -442,7 +964,8 @@ function initBeliefCardAccordion() {
 
     if (!inner || !outer) return;
 
-    card.classList.add("is-open");
+    rememberedBeliefCard = card;
+    card.classList.add("is-active", "is-open");
     outer.style.height = `${inner.scrollHeight}px`;
   }
 
@@ -455,6 +978,8 @@ function initBeliefCardAccordion() {
       : "0px";
 
     beliefCard.addEventListener("click", () => {
+      AudioManager.playSfx("clickAction");
+
       const wasOpen = beliefCard.classList.contains("is-open");
 
       beliefCards.forEach(closeCard);
@@ -462,6 +987,8 @@ function initBeliefCardAccordion() {
       // Clicking the open card closes it; otherwise open the clicked card.
       if (!wasOpen) {
         openCard(beliefCard);
+      } else if (rememberedBeliefCard === beliefCard) {
+        rememberedBeliefCard = null;
       }
     });
   });
@@ -470,7 +997,89 @@ function initBeliefCardAccordion() {
 
 // Bee Network mobile slider and desktop click sequence
 function initBeeNetworkAnimation() {
+  const gsap = window.gsap;
   const isMobile = window.matchMedia("(max-width: 767px)").matches;
+  const buttons = [
+    document.querySelector("#bee-network-1"),
+    document.querySelector("#bee-network-2"),
+    document.querySelector("#bee-network-3"),
+  ].filter(Boolean);
+  const tapIndicator = document.querySelector(
+    "#the-network-effect .tap-indicator",
+  );
+  const prefersReducedMotion = window.matchMedia(
+    "(prefers-reduced-motion: reduce)",
+  ).matches;
+
+  buttons.forEach((button) => {
+    button.addEventListener("click", () => {
+      AudioManager.playSfx("clickAction");
+    });
+  });
+
+  if (
+    buttons.length &&
+    gsap &&
+    window.ScrollTrigger
+  ) {
+    if (prefersReducedMotion) {
+      gsap.set([...buttons, tapIndicator].filter(Boolean), {
+        opacity: 1,
+        yPercent: 0,
+        scale: 1,
+      });
+    } else {
+      const beeNetTl = gsap.timeline({
+        scrollTrigger: {
+          trigger: "#the-network-effect",
+          start: "top center",
+          end: "bottom bottom",
+          scrub: 1,
+          // toggleActions: "play none none reverse",
+        },
+      });
+
+      beeNetTl.from(buttons, {
+        opacity: 0,
+        yPercent: 100,
+        scale: 0,
+        transformOrigin: "50% 50%",
+        duration: 0.5,
+        stagger: 0.5,
+        ease: "power2.out",
+      });
+
+      if (tapIndicator) {
+
+        const beeNetHeadingTl = gsap.timeline({
+          scrollTrigger: {
+            trigger: "#the-network-effect",
+            start: "top 20% ",
+            end: "bottom bottom",
+            // scrub: 1,
+            toggleActions: "play none none reverse",
+          },
+        });
+        beeNetHeadingTl.from('[network-effect-heading] .word',
+          {
+            yPercent: 110,
+            opacity: 0,
+            duration: 1,
+            ease: 'power4.out',
+            stagger: 0.08,
+          },
+        )
+        .from(
+          tapIndicator,
+          {
+            opacity: 0,
+            duration: 0.9,
+            ease: "power2.out",
+          },"<"
+        )
+      }
+    }
+  }
 
   if (isMobile) {
     const slider = document.querySelector(".network-effect_swiper");
@@ -512,18 +1121,7 @@ function initBeeNetworkAnimation() {
     return;
   }
 
-  const { gsap } = window;
-  const buttons = [
-    document.querySelector("#bee-network-1"),
-    document.querySelector("#bee-network-2"),
-    document.querySelector("#bee-network-3"),
-  ].filter(Boolean);
-
   if (!buttons.length) return;
-
-  const prefersReducedMotion = window.matchMedia(
-    "(prefers-reduced-motion: reduce)",
-  ).matches;
   const svgNamespace = "http://www.w3.org/2000/svg";
 
   function createLineReveal(path, index) {
@@ -688,7 +1286,7 @@ function initBeeNetworkAnimation() {
 
 
 function initCommunityAnimation() {
-  const isMobile = window.matchMedia("(max-width: 767px)").matches;
+  const isMobile = window.matchMedia("(max-width: 991px)").matches;
 
   if (isMobile) {
     const communitySlider = document.querySelector(".community-grid.swiper");
@@ -756,11 +1354,6 @@ function initCommunityAnimation() {
         if (pagination) {
           pagination.classList.add("community-image-pagination");
           pagination.replaceChildren();
-          Object.assign(pagination.style, {
-            display: "flex",
-            gap: "0.5rem",
-            width: "100%",
-          });
 
           imageSlides.forEach(() => {
             const progressSegment = document.createElement("span");
@@ -770,24 +1363,6 @@ function initCommunityAnimation() {
               "community-image-progress_segment",
             );
             progressFill.classList.add("community-image-progress_fill");
-
-            Object.assign(progressSegment.style, {
-              flex: "1",
-              height: "0.25rem",
-              overflow: "hidden",
-              borderRadius: "999px",
-              background: "rgba(255, 255, 255, 0.35)",
-            });
-
-            Object.assign(progressFill.style, {
-              display: "block",
-              width: "100%",
-              height: "100%",
-              borderRadius: "inherit",
-              background: "currentColor",
-              transform: "scaleX(0)",
-              transformOrigin: "left center",
-            });
 
             progressSegment.appendChild(progressFill);
             pagination.appendChild(progressSegment);
@@ -948,25 +1523,200 @@ function initCommunityAnimation() {
   }
 
   media.add("(min-width: 768px)", () => {
-    gsap.fromTo(
-      secondCommunityImage,
-      { opacity: 0 },
-      {
-        opacity: 1,
+    const scrollToCommunityTarget = (target, offset = 0) => {
+      const targetElement =
+        typeof target === "string" ? document.querySelector(target) : target;
+
+      if (!targetElement) return;
+
+      let targetTop = 0;
+      let offsetElement = targetElement;
+
+      // offsetTop preserves the element's original layout position even when
+      // the target is currently stuck with position: sticky.
+      while (offsetElement) {
+        targetTop += offsetElement.offsetTop;
+        offsetElement = offsetElement.offsetParent;
+      }
+
+      const destination = targetTop + offset;
+
+      if (window.lenis?.scrollTo) {
+        window.lenis.scrollTo(destination, {
+          duration: 0.8,
+          easing: (progress) => 1 - Math.pow(1 - progress, 4),
+          force: true,
+        });
+        return;
+      }
+
+      window.scrollTo({
+        top: destination,
+        behavior: "smooth",
+      });
+    };
+
+    const handleBeeTogetherClick = () => {
+      scrollToCommunityTarget(trigger, -window.innerHeight * 0.8);
+    };
+
+    const handleBeeCampClick = () => {
+      scrollToCommunityTarget(trigger, -window.innerHeight);
+    };
+
+    beeTogetherButton.addEventListener("click", handleBeeTogetherClick);
+    beeCampButton.addEventListener("click", handleBeeCampClick);
+
+    const markerLayer = beeCampButton.closest(".community_option_wrap");
+    const beeCampMarkers = Array.from(
+      beeCampButton.querySelectorAll(".u-eyebrow-marker"),
+    );
+    const beeTogetherMarkers = Array.from(
+      beeTogetherButton.querySelectorAll(".u-eyebrow-marker"),
+    );
+    const markerPairs = beeCampMarkers
+      .map((sourceMarker, index) => ({
+        sourceMarker,
+        destinationMarker: beeTogetherMarkers[index],
+      }))
+      .filter(({ destinationMarker }) => destinationMarker);
+    const movingMarkers = [];
+    const originalMarkerLayerPosition = markerLayer?.style.position || "";
+
+    const activateCommunity = (activeButton) => {
+      const isBeeTogether = activeButton === beeTogetherButton;
+
+      setActiveCommunity(activeButton);
+      gsap.to(secondCommunityImage, {
+        opacity: isBeeTogether ? 1 : 0,
         duration: 0.6,
         ease: "power2.out",
-        scrollTrigger: {
-          trigger,
-          start: "top 90%",
-          toggleActions: "play none none reverse",
-          onEnter: () => setActiveCommunity(beeTogetherButton),
-          onEnterBack: () => setActiveCommunity(beeTogetherButton),
-          onLeaveBack: () => setActiveCommunity(beeCampButton),
-        },
-      },
-    );
+        overwrite: true,
+      });
+    };
 
-    return () => setActiveCommunity(beeCampButton);
+    gsap.set(secondCommunityImage, { opacity: 0 });
+
+    const communityTimeline = gsap.timeline({
+      onComplete: () => activateCommunity(beeTogetherButton),
+      onReverseComplete: () => activateCommunity(beeCampButton),
+      scrollTrigger: {
+        trigger,
+        start: "top 100%",
+        end: "top 80%",
+        scrub: true,
+        invalidateOnRefresh: true,
+      },
+    });
+
+    // communityTimeline.fromTo(
+    //   beeCampButton,
+    //   {
+    //     scale: 1,
+    //     transformOrigin: "50% 50%",
+    //   },
+    //   {
+    //     scale: 0.94,
+    //     duration: 1,
+    //     ease: "none",
+    //   },
+    //   0,
+    // );
+
+    // communityTimeline.fromTo(
+    //   beeTogetherButton,
+    //   {
+    //     scale: 0.94,
+    //     transformOrigin: "50% 50%",
+    //   },
+    //   {
+    //     scale: 1,
+    //     duration: 1,
+    //     ease: "none",
+    //   },
+    //   0,
+    // );
+
+    if (markerLayer && markerPairs.length) {
+      if (window.getComputedStyle(markerLayer).position === "static") {
+        markerLayer.style.position = "relative";
+      }
+
+      const getMarkerBounds = (marker) => {
+        const layerBounds = markerLayer.getBoundingClientRect();
+        const markerBounds = marker.getBoundingClientRect();
+
+        return {
+          x: markerBounds.left - layerBounds.left,
+          y: markerBounds.top - layerBounds.top,
+          width: markerBounds.width,
+          height: markerBounds.height,
+        };
+      };
+
+      markerPairs.forEach(({ sourceMarker, destinationMarker }) => {
+        const movingMarker = sourceMarker.cloneNode(true);
+
+        movingMarker.setAttribute("aria-hidden", "true");
+        markerLayer.appendChild(movingMarker);
+        movingMarkers.push(movingMarker);
+
+        gsap.set([sourceMarker, destinationMarker], {
+          visibility: "hidden",
+        });
+
+        gsap.set(movingMarker, {
+          position: "absolute",
+          top: 0,
+          left: 0,
+          margin: 0,
+          pointerEvents: "none",
+          zIndex: 2,
+          willChange: "transform, width, height",
+        });
+
+        communityTimeline.fromTo(
+          movingMarker,
+          {
+            x: () => getMarkerBounds(sourceMarker).x,
+            y: () => getMarkerBounds(sourceMarker).y,
+            width: () => getMarkerBounds(sourceMarker).width,
+            height: () => getMarkerBounds(sourceMarker).height,
+          },
+          {
+            x: () => getMarkerBounds(destinationMarker).x,
+            y: () => getMarkerBounds(destinationMarker).y,
+            width: () => getMarkerBounds(destinationMarker).width,
+            height: () => getMarkerBounds(destinationMarker).height,
+            duration: 1,
+            ease: "none",
+          },
+          0,
+        );
+      });
+    }
+
+    return () => {
+      beeTogetherButton.removeEventListener(
+        "click",
+        handleBeeTogetherClick,
+      );
+      beeCampButton.removeEventListener("click", handleBeeCampClick);
+      gsap.killTweensOf(secondCommunityImage);
+      movingMarkers.forEach((movingMarker) => movingMarker.remove());
+      gsap.set([beeCampButton, beeTogetherButton], {
+        clearProps: "transform,transformOrigin",
+      });
+      gsap.set([...beeCampMarkers, ...beeTogetherMarkers], {
+        clearProps: "visibility",
+      });
+
+      if (markerLayer) {
+        markerLayer.style.position = originalMarkerLayerPosition;
+      }
+
+      setActiveCommunity(beeCampButton);
+    };
   });
 }
 
@@ -1167,6 +1917,8 @@ function initBeeNetworkTabs() {
     triggerOuters.forEach((triggerOuter, index) => {
       triggerOuter.addEventListener("click", () => {
         if (!contents[index]) return;
+
+        AudioManager.playSfx("clickAction");
         setActiveNetworkItem(index);
         triggerSwiper?.slideToLoop(index);
       });
@@ -1196,11 +1948,6 @@ function initBeeNetworkTabs() {
       "bee-network-trigger_swiper-wrapper",
       "swiper-wrapper",
     );
-
-    Object.assign(triggerContainer.style, {
-      overflow: "hidden",
-      touchAction: "pan-y",
-    });
 
     Object.assign(triggerWrapper.style, {
       position: "relative",
@@ -1378,6 +2125,7 @@ function initFounderStories() {
   function enableStoryClicks() {
     storyItems.forEach((storyItem) => {
       storyItem.addEventListener("click", () => {
+        AudioManager.playSfx("clickAction");
         setActiveStory(storyItem);
       });
     });
@@ -1442,14 +2190,58 @@ function initFounderStories() {
   );
 }
 
+function initBeliefCardResponsiveScale() {
+  const cardWrap = document.querySelector(".belief-card_wrap");
 
+  if (!cardWrap) return;
+
+  const referenceWidth = 1440;
+  const referenceHeight = 810;
+
+  function updateScale() {
+    const isDesktop = window.matchMedia("(min-width: 768px)").matches;
+
+    const scale = isDesktop
+      ? Math.min(
+          window.innerWidth / referenceWidth,
+          window.innerHeight / referenceHeight,
+          1
+        )
+      : 1;
+
+    cardWrap.style.setProperty(
+      "--belief-card-scale",
+      scale.toFixed(4)
+    );
+
+    // Recalculate any currently opened dropdown.
+    cardWrap
+      .querySelectorAll(".belief-card.is-open")
+      .forEach((card) => {
+        const outer = card.querySelector(".card_dd_outer");
+        const inner = card.querySelector(".card_dd_inner");
+
+        if (outer && inner) {
+          outer.style.height = `${inner.scrollHeight}px`;
+        }
+      });
+  }
+
+  updateScale();
+
+  window.addEventListener("resize", updateScale);
+  window.visualViewport?.addEventListener("resize", updateScale);
+}
 
 
 document.addEventListener("DOMContentLoaded", () => {
   document.fonts?.ready.then(() => {
+    initBeliefSystemTextAnimation();
+    initBonsaiWebGPUVideo();
     openFounderNote();
     openYouTubePopup();
     initBeliefCardAccordion();
+    initBeliefCardResponsiveScale();
     initBeeNetworkAnimation();
     initCommunityAnimation();
     initFounderStories();

@@ -1,8 +1,6 @@
 
   window.Webflow ||= [];
 
-  console.log("bv")
-
   window.Webflow.push(async () => {
     if (typeof gsap === 'undefined' || typeof Swiper === 'undefined' || typeof SplitText === 'undefined') {
       return;
@@ -291,7 +289,7 @@
         outgoingFadeElements,
         {
           opacity: 0,
-          duration: 0.12,
+          duration: 0.1,
           ease: 'none',
         },
         'outgoing',
@@ -395,6 +393,12 @@
     const mobileImageMedia = gsap.matchMedia();
 
     mobileImageMedia.add('(max-width: 767px)', () => {
+      const imageAutoplayDelay = 4000;
+      const imageFadeDuration = 1000;
+      const prefersReducedMotion = window.matchMedia(
+        '(prefers-reduced-motion: reduce)',
+      ).matches;
+
       const squareImageMoves = slides
         .map((parentSlide) => {
           const squareOuter = parentSlide.querySelector(
@@ -433,54 +437,206 @@
           const testimonialGrid = parentSlide.querySelector(
             '.testimonial-grid',
           );
+          const pagination = imageMain.querySelector(
+            '.testimonial-pagination_wrap > .testimonial-pagination.swiper-pagination',
+          );
+          const imageTrack = imageMain.querySelector(
+            ':scope > .testimonial-image_track.swiper-wrapper',
+          );
+          const imageSlides = imageTrack
+            ? Array.from(imageTrack.children).filter((imageSlide) =>
+                imageSlide.classList.contains('swiper-slide'),
+              )
+            : [];
           const hadSwiperClass = imageMain.classList.contains('swiper');
+          const hadPaginationClass = pagination?.classList.contains(
+            'testimonial-image-pagination',
+          );
+          const originalPaginationStyle = pagination?.getAttribute('style');
+          const originalPaginationChildren = pagination
+            ? Array.from(pagination.childNodes)
+            : [];
+          const progressFills = [];
 
           imageMain.classList.add('swiper');
 
           gsap.set([parentSlide, testimonialGrid, imageMain].filter(Boolean), {
             minWidth: 0,
           });
-          gsap.set(imageMain, {
-            width: '100%',
-            maxWidth: '100%',
-            overflow: 'hidden',
-          });
+
+          if (pagination) {
+            pagination.classList.add('testimonial-image-pagination');
+            pagination.replaceChildren();
+
+            imageSlides.forEach(() => {
+              const progressSegment = document.createElement('span');
+              const progressFill = document.createElement('span');
+
+              progressSegment.classList.add(
+                'testimonial-image-progress_segment',
+              );
+              progressFill.classList.add(
+                'testimonial-image-progress_fill',
+              );
+
+              progressSegment.appendChild(progressFill);
+              pagination.appendChild(progressSegment);
+              progressFills.push(progressFill);
+            });
+          }
 
           const childCarousel = new Swiper(imageMain, {
-            slidesPerView: 1.15,
-            spaceBetween: 16,
-            speed: 600,
-            grabCursor: true,
+            slidesPerView: 1,
+            speed: prefersReducedMotion ? 0 : imageFadeDuration,
+            effect: 'fade',
+            fadeEffect: {
+              crossFade: true,
+            },
+            loop: true,
             nested: true,
-            rewind: true,
             watchOverflow: true,
-            slideToClickedSlide: true,
             observer: true,
             observeParents: true,
+            autoplay: {
+              enabled: false,
+              delay: imageAutoplayDelay,
+              disableOnInteraction: false,
+            },
           });
 
+          childCarousel.autoplay.stop();
+
           return {
+            parentSlide,
             childCarousel,
             imageMain,
             hadSwiperClass,
+            pagination,
+            hadPaginationClass,
+            originalPaginationStyle,
+            originalPaginationChildren,
+            progressFills,
+            isParentActive: false,
+            onRealIndexChange: null,
           };
         })
         .filter(Boolean);
 
       if (!childCarousels.length && !squareImageMoves.length) return;
 
+      function resetImageProgress(childCarousel, progressFills) {
+        progressFills.forEach((progressFill, index) => {
+          progressFill.getAnimations().forEach((animation) => {
+            animation.cancel();
+          });
+
+          progressFill.style.transform =
+            index < childCarousel.realIndex ? 'scaleX(1)' : 'scaleX(0)';
+        });
+      }
+
+      function updateImageProgress(childCarousel, progressFills) {
+        resetImageProgress(childCarousel, progressFills);
+
+        progressFills[childCarousel.realIndex]?.animate(
+          [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }],
+          {
+            duration: imageAutoplayDelay,
+            easing: 'linear',
+            fill: 'forwards',
+          },
+        );
+      }
+
+      childCarousels.forEach((childCarouselInstance) => {
+        const { childCarousel, progressFills } = childCarouselInstance;
+
+        resetImageProgress(childCarousel, progressFills);
+
+        childCarouselInstance.onRealIndexChange = () => {
+          if (!childCarouselInstance.isParentActive) return;
+
+          if (prefersReducedMotion) {
+            resetImageProgress(childCarousel, progressFills);
+            return;
+          }
+
+          updateImageProgress(childCarousel, progressFills);
+        };
+
+        childCarousel.on(
+          'realIndexChange',
+          childCarouselInstance.onRealIndexChange,
+        );
+      });
+
+      function syncChildAutoplay() {
+        const activeParentSlide = slides[testimonialSwiper.activeIndex];
+
+        childCarousels.forEach((childCarouselInstance) => {
+          const {
+            parentSlide,
+            childCarousel,
+            progressFills,
+          } = childCarouselInstance;
+          const isParentActive = parentSlide === activeParentSlide;
+
+          if (childCarouselInstance.isParentActive === isParentActive) return;
+
+          childCarouselInstance.isParentActive = isParentActive;
+
+          if (isParentActive && !prefersReducedMotion) {
+            childCarousel.params.autoplay.enabled = true;
+            childCarousel.autoplay.start();
+            updateImageProgress(childCarousel, progressFills);
+          } else {
+            childCarousel.params.autoplay.enabled = false;
+            childCarousel.autoplay.stop();
+            resetImageProgress(childCarousel, progressFills);
+          }
+        });
+      }
+
+      testimonialSwiper.on('slideChange', syncChildAutoplay);
+      syncChildAutoplay();
+
       return () => {
         childCarousels.forEach(({
           childCarousel,
           imageMain,
           hadSwiperClass,
+          pagination,
+          hadPaginationClass,
+          originalPaginationStyle,
+          originalPaginationChildren,
+          progressFills,
+          onRealIndexChange,
         }) => {
+          childCarousel.off('realIndexChange', onRealIndexChange);
+          childCarousel.autoplay.stop();
+          resetImageProgress(childCarousel, progressFills);
           childCarousel.destroy(true, true);
 
           if (!hadSwiperClass) {
             imageMain.classList.remove('swiper');
           }
+
+          if (pagination) {
+            pagination.replaceChildren(...originalPaginationChildren);
+
+            if (!hadPaginationClass) {
+              pagination.classList.remove('testimonial-image-pagination');
+            }
+
+            if (originalPaginationStyle === null) {
+              pagination.removeAttribute('style');
+            } else {
+              pagination.setAttribute('style', originalPaginationStyle);
+            }
+          }
         });
+
+        testimonialSwiper.off('slideChange', syncChildAutoplay);
 
         squareImageMoves.forEach(({ squareWrap, originalPosition }) => {
           originalPosition.parentNode.insertBefore(
