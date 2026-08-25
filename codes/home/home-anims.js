@@ -363,6 +363,7 @@ async function initBonsaiWebGPUVideo() {
     /Safari/i.test(navigator.userAgent) &&
     !/Chrome|Chromium|CriOS|FxiOS|EdgiOS|Android/i.test(navigator.userAgent);
   const shouldUseHevcAlpha = isIOS || isSafari;
+  const useNativeAlphaVideo = shouldUseHevcAlpha && Boolean(mp4Source);
   const directVideoSource =
     outer.dataset.bonsaiVideoSrc ||
     outer.dataset.videoSrc ||
@@ -377,7 +378,7 @@ async function initBonsaiWebGPUVideo() {
     return;
   }
 
-  if (!navigator.gpu) {
+  if (!useNativeAlphaVideo && !navigator.gpu) {
     console.warn("Bonsai WebGPU video: WebGPU is not available.");
     return;
   }
@@ -487,6 +488,122 @@ async function initBonsaiWebGPUVideo() {
 
     if (!Number.isFinite(video.duration) || video.duration <= 0) {
       throw new Error("The bonsai video must have a finite duration.");
+    }
+
+    if (useNativeAlphaVideo) {
+      // Safari decodes HEVC alpha correctly in its native media compositor,
+      // but its WebGPU external-texture path currently returns an opaque
+      // frame. Keep the same scroll scrub while rendering the video natively.
+      canvas.remove();
+      video.classList.add(
+        "bonsai-webgpu-canvas",
+        "bonsai-native-alpha-video",
+      );
+      Object.assign(video.style, {
+        display: "block",
+        position: "absolute",
+        left: "0",
+        bottom: "0",
+        width: "100%",
+        height: "auto",
+        maxWidth: "100%",
+        objectFit: "contain",
+        background: "transparent",
+        opacity: "1",
+        pointerEvents: "none",
+      });
+
+      if (fallbackImage) fallbackImage.style.opacity = "0";
+
+      const frameRate = 24;
+      const frameDuration = 1 / frameRate;
+      const maxVideoTime = Math.max(0, video.duration - frameDuration);
+      const videoScrub = { time: 0 };
+      let pendingVideoTime = 0;
+      let seekInProgress = false;
+
+      function seekToPendingFrame() {
+        const quantizedTime = Math.min(
+          maxVideoTime,
+          Math.max(
+            0,
+            Math.round(pendingVideoTime * frameRate) / frameRate,
+          ),
+        );
+
+        if (Math.abs(video.currentTime - quantizedTime) < frameDuration / 2) {
+          seekInProgress = false;
+          return;
+        }
+
+        seekInProgress = true;
+        video.currentTime = quantizedTime;
+      }
+
+      function queueNativeVideoSeek(time) {
+        pendingVideoTime = time;
+        if (!seekInProgress) seekToPendingFrame();
+      }
+
+      function handleNativeVideoSeeked() {
+        seekInProgress = false;
+
+        if (
+          Math.abs(video.currentTime - pendingVideoTime) >=
+          frameDuration / 2
+        ) {
+          seekToPendingFrame();
+        }
+      }
+
+      video.addEventListener("seeked", handleNativeVideoSeeked);
+
+      const scrubTween = gsap.to(videoScrub, {
+        time: maxVideoTime,
+        duration: 1,
+        ease: "none",
+        paused: true,
+        onUpdate: () => queueNativeVideoSeek(videoScrub.time),
+      });
+
+      let scrollTrigger = null;
+      const scrubMedia = gsap.matchMedia();
+
+      scrubMedia.add(
+        {
+          mobile: "(max-width: 991px)",
+          desktop: "(min-width: 992px)",
+        },
+        (context) => {
+          const isMobile = context.conditions.mobile;
+
+          scrollTrigger = ScrollTrigger.create({
+            trigger: isMobile ? beliefSection : trigger,
+            start: isMobile ? "top center" : "top bottom",
+            end: "top top",
+            animation: scrubTween,
+            scrub: true,
+            invalidateOnRefresh: true,
+          });
+
+          return () => {
+            scrollTrigger?.kill();
+            scrollTrigger = null;
+          };
+        },
+      );
+
+      window.addEventListener(
+        "pagehide",
+        () => {
+          scrubMedia.revert();
+          scrubTween.kill();
+          video.removeEventListener("seeked", handleNativeVideoSeeked);
+        },
+        { once: true },
+      );
+
+      return;
     }
 
     const frameWidth = Number(outer.getAttribute("video-width")) || 1440;
