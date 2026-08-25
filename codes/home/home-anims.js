@@ -356,6 +356,13 @@ async function initBonsaiWebGPUVideo() {
   const existingVideo = outer.querySelector("video[data-bonsai-video]");
   const webmSource = outer.getAttribute("video-url-webm");
   const mp4Source = outer.getAttribute("video-url-mp4");
+  const isIOS =
+    /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const isSafari =
+    /Safari/i.test(navigator.userAgent) &&
+    !/Chrome|Chromium|CriOS|FxiOS|EdgiOS|Android/i.test(navigator.userAgent);
+  const shouldUseHevcAlpha = isIOS || isSafari;
   const directVideoSource =
     outer.dataset.bonsaiVideoSrc ||
     outer.dataset.videoSrc ||
@@ -406,18 +413,24 @@ async function initBonsaiWebGPUVideo() {
       .querySelectorAll("source[data-bonsai-generated-source]")
       .forEach((source) => source.remove());
 
-    [
-      { src: webmSource, type: "video/webm" },
-      { src: mp4Source, type: "video/mp4" },
-    ].forEach(({ src, type }) => {
-      if (!src) return;
+    if (shouldUseHevcAlpha && mp4Source) {
+      // Safari supports WebM, but not VP9 alpha reliably. Assign the HEVC
+      // alpha file directly so Safari cannot select the WebM source first.
+      video.src = mp4Source;
+    } else {
+      [
+        { src: webmSource, type: 'video/webm; codecs="vp9"' },
+        { src: mp4Source, type: 'video/mp4; codecs="hvc1"' },
+      ].forEach(({ src, type }) => {
+        if (!src) return;
 
-      const source = document.createElement("source");
-      source.src = src;
-      source.type = type;
-      source.dataset.bonsaiGeneratedSource = "";
-      video.appendChild(source);
-    });
+        const source = document.createElement("source");
+        source.src = src;
+        source.type = type;
+        source.dataset.bonsaiGeneratedSource = "";
+        video.appendChild(source);
+      });
+    }
   } else if (
     directVideoSource &&
     !video.currentSrc &&
