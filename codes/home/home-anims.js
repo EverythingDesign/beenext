@@ -879,7 +879,7 @@ function openFounderNote() {
     closeTimer = null;
 
     founderNote.style.display = "block";
-    lenis.lock();
+    window.smoother?.paused(true);
     AudioManager.playSfx("founderOpen");
 
     openFrame = requestAnimationFrame(() => {
@@ -908,7 +908,7 @@ function openFounderNote() {
       if (isOpen) return;
 
       founderNote.style.display = "none";
-      lenis.unlock();
+      window.smoother?.paused(false);
     }, 400);
   }
 
@@ -1030,7 +1030,7 @@ function openYouTubePopup() {
 
     popupFrame.replaceChildren(createYouTubeIframe(embedUrl));
     popup.style.display = "flex";
-    window.lenis?.lock();
+    window.smoother?.paused(true);
     pauseBackgroundAudio();
 
     openFrame = requestAnimationFrame(() => {
@@ -1059,7 +1059,7 @@ function openYouTubePopup() {
 
       popup.style.display = "none";
       popupFrame.replaceChildren();
-      window.lenis?.unlock();
+      window.smoother?.paused(false);
       resumeBackgroundAudio();
     }, 400);
   }
@@ -1671,11 +1671,20 @@ function initCommunityAnimation() {
 
       const destination = targetTop + offset;
 
-      if (window.lenis?.scrollTo) {
-        window.lenis.scrollTo(destination, {
+      const smoother = window.ScrollSmoother?.get();
+
+      if (smoother) {
+        const maxScroll = window.ScrollTrigger?.maxScroll(window);
+        const clampedDestination =
+          typeof maxScroll === "number"
+            ? gsap.utils.clamp(0, maxScroll, destination)
+            : destination;
+
+        gsap.to(smoother, {
+          scrollTop: clampedDestination,
           duration: 0.8,
-          easing: (progress) => 1 - Math.pow(1 - progress, 4),
-          force: true,
+          ease: "power4.out",
+          overwrite: "auto",
         });
         return;
       }
