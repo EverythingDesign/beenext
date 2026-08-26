@@ -83,83 +83,6 @@
 
 let rememberedBeliefCard = null;
 
-/**
- * ScrollSmoother translates #smooth-content. Native position: sticky can
- * therefore resolve against the transformed/overflow-hidden wrapper instead
- * of the page viewport. Pin the existing sticky scenes with ScrollTrigger and
- * use their existing spacer elements as the pin end points.
- */
-function initScrollSmootherStickyPins() {
-  if (!window.gsap || !window.ScrollTrigger) return;
-
-  const pinScenes = [
-    {
-      pin: "#home-hero > section.u-position-sticky",
-      endTrigger: "#hero-trigger-1",
-    },
-    {
-      pin: ".founders_note-section",
-      endTrigger: ".bee-track-trigger",
-    },
-    {
-      pin: ".belief-system-section",
-      endTrigger: ".belief-system-trigger",
-    },
-    {
-      pin: "#innovation-stories",
-      endTrigger: ".i-s-trigger",
-    },
-  ];
-
-  const media = gsap.matchMedia();
-
-  media.add("(min-width: 768px)", () => {
-    const pins = [];
-    const originalStickyClasses = [];
-
-    pinScenes.forEach(({ pin: pinSelector, endTrigger: endSelector }) => {
-      const pinElement = document.querySelector(pinSelector);
-      const endTrigger = document.querySelector(endSelector);
-
-      if (!pinElement || !endTrigger) return;
-
-      originalStickyClasses.push({
-        element: pinElement,
-        hadClass: pinElement.classList.contains("u-position-sticky"),
-      });
-
-      // Disable the conflicting native sticky rule while ScrollTrigger owns
-      // the pin. The class is restored on media cleanup.
-      pinElement.classList.remove("u-position-sticky");
-
-      pins.push(
-        ScrollTrigger.create({
-          trigger: pinElement,
-          pin: pinElement,
-          start: "top top",
-          endTrigger,
-          end: "bottom bottom",
-          // The existing trigger spacer already provides the scroll distance.
-          // Adding ScrollTrigger's duration padding would duplicate that
-          // space and make the following scene drift/overlap.
-          pinSpacing: false,
-          anticipatePin: 1,
-          invalidateOnRefresh: true,
-        }),
-      );
-    });
-
-    requestAnimationFrame(() => ScrollTrigger.refresh());
-
-    return () => {
-      pins.forEach((pin) => pin.kill());
-      originalStickyClasses.forEach(({ element, hadClass }) => {
-        if (hadClass) element.classList.add("u-position-sticky");
-      });
-    };
-  });
-}
-
 function initBeliefSystemTextAnimation() {
   const mountain = document.querySelector(".bonsai-img-outer");
   const mountainStartY = mountain
@@ -916,7 +839,7 @@ function openFounderNote() {
     closeTimer = null;
 
     founderNote.style.display = "block";
-    window.smoother?.paused(true);
+    lenis.lock();
     AudioManager.playSfx("founderOpen");
 
     openFrame = requestAnimationFrame(() => {
@@ -945,7 +868,7 @@ function openFounderNote() {
       if (isOpen) return;
 
       founderNote.style.display = "none";
-      window.smoother?.paused(false);
+      lenis.unlock();
     }, 400);
   }
 
@@ -1067,7 +990,7 @@ function openYouTubePopup() {
 
     popupFrame.replaceChildren(createYouTubeIframe(embedUrl));
     popup.style.display = "flex";
-    window.smoother?.paused(true);
+    window.lenis?.lock();
     pauseBackgroundAudio();
 
     openFrame = requestAnimationFrame(() => {
@@ -1096,7 +1019,7 @@ function openYouTubePopup() {
 
       popup.style.display = "none";
       popupFrame.replaceChildren();
-      window.smoother?.paused(false);
+      window.lenis?.unlock();
       resumeBackgroundAudio();
     }, 400);
   }
@@ -1708,20 +1631,11 @@ function initCommunityAnimation() {
 
       const destination = targetTop + offset;
 
-      const smoother = window.ScrollSmoother?.get();
-
-      if (smoother) {
-        const maxScroll = window.ScrollTrigger?.maxScroll(window);
-        const clampedDestination =
-          typeof maxScroll === "number"
-            ? gsap.utils.clamp(0, maxScroll, destination)
-            : destination;
-
-        gsap.to(smoother, {
-          scrollTop: clampedDestination,
+      if (window.lenis?.scrollTo) {
+        window.lenis.scrollTo(destination, {
           duration: 0.8,
-          ease: "power4.out",
-          overwrite: "auto",
+          easing: (progress) => 1 - Math.pow(1 - progress, 4),
+          force: true,
         });
         return;
       }
@@ -2422,7 +2336,6 @@ function initBeliefCardResponsiveScale() {
 
 document.addEventListener("DOMContentLoaded", () => {
   document.fonts?.ready.then(() => {
-    initScrollSmootherStickyPins();
     initBeliefSystemTextAnimation();
     initBonsaiWebGPUVideo();
     openFounderNote();
