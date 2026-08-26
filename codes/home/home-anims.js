@@ -154,11 +154,11 @@ function initBeliefSystemTextAnimation() {
     },
     "<0.15",
   )
-  .from(
+  .to(
     ".belief_heading p .word",
     {
-      yPercent: 110,
-      opacity: 0,
+      yPercent: 0,
+      opacity: 1,
       duration: 1,
       ease: "power4.out",
       stagger: 0.06,
