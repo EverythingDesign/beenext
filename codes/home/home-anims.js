@@ -1089,6 +1089,9 @@ function initBeliefCardAccordion() {
 function initBeeNetworkAnimation() {
   const gsap = window.gsap;
   const isMobile = window.matchMedia("(max-width: 767px)").matches;
+  const networkSection = document.querySelector("#the-network-effect");
+  let activeItem = null;
+  let activeTimeline = null;
   const buttons = [
     document.querySelector("#bee-network-1"),
     document.querySelector("#bee-network-2"),
@@ -1123,9 +1126,24 @@ function initBeeNetworkAnimation() {
         scrollTrigger: {
           trigger: "#the-network-effect",
           start: "top center",
-          end: "bottom bottom",
+          end: "top 20%",
           scrub: 1,
-          // toggleActions: "play none none reverse",
+          onUpdate: (self) => {
+            const item = activeItem;
+
+            // Reverse the opened card when its own button starts reversing.
+            // The staggered entrance is 0.5s per item with a 0.5s gap.
+            if (
+              self.direction !== -1 ||
+              !item ||
+              !activeTimeline ||
+              self.progress > item.entranceReverseThreshold
+            ) {
+              return;
+            }
+
+            reverseActiveNetworkItem();
+          },
         },
       });
 
@@ -1282,11 +1300,40 @@ function initBeeNetworkAnimation() {
         contentOuter,
         connectedContent,
         lineReveal: createLineReveal(linePath, index),
+        // Matches the point where this button begins reversing in beeNetTl.
+        entranceReverseThreshold:
+          (index * 0.5 + 0.5) / (0.5 + 0.5 * (buttons.length - 1)),
       };
     })
     .filter(Boolean);
 
   if (!items.length) return;
+
+  function reverseActiveNetworkItem() {
+    const item = activeItem;
+    const timeline = activeTimeline;
+
+    if (!item) return;
+
+    // Reduced-motion mode has no opening timeline to reverse.
+    if (!timeline) {
+      resetItem(item);
+      activeItem = null;
+      return;
+    }
+
+    // Do not restart a reverse that is already in progress.
+    if (timeline.reversed() && timeline.isActive()) return;
+
+    timeline.eventCallback("onReverseComplete", () => {
+      if (activeTimeline !== timeline) return;
+
+      activeTimeline = null;
+      activeItem = null;
+      resetItem(item);
+    });
+    timeline.reverse();
+  }
 
   function resetItem(item) {
     item.wrapper.classList.remove("is-active");
@@ -1313,12 +1360,13 @@ function initBeeNetworkAnimation() {
 
   items.forEach(resetItem);
 
-  let activeTimeline = null;
-
   items.forEach((item) => {
     item.button.addEventListener("click", () => {
       activeTimeline?.kill();
       items.forEach(resetItem);
+
+      activeTimeline = null;
+      activeItem = item;
 
       item.wrapper.classList.add("is-active");
       item.button.setAttribute("aria-expanded", "true");
@@ -1371,6 +1419,12 @@ function initBeeNetworkAnimation() {
         ease: "power3.out",
       }, "<0.5");
     });
+  });
+
+  // Clicking empty space in the section reverses the currently open item.
+  networkSection?.addEventListener("click", (event) => {
+    if (event.target.closest(".network-btn_wrap")) return;
+    reverseActiveNetworkItem();
   });
 }
 
