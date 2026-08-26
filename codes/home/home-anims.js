@@ -83,6 +83,84 @@
 
 let rememberedBeliefCard = null;
 
+/**
+ * ScrollSmoother translates #smooth-content. Native position: sticky can
+ * therefore resolve against the transformed/overflow-hidden wrapper instead
+ * of the page viewport. Pin the existing sticky scenes with ScrollTrigger and
+ * use their existing spacer elements as the pin end points.
+ */
+function initScrollSmootherStickyPins() {
+  if (
+    !window.gsap ||
+    !window.ScrollTrigger ||
+    !window.ScrollSmoother?.get()
+  ) return;
+
+  const pinScenes = [
+    {
+      pin: "#home-hero > section.u-position-sticky",
+      endTrigger: "#hero-trigger-1",
+    },
+    {
+      pin: ".founders_note-section",
+      endTrigger: ".bee-track-trigger",
+    },
+    {
+      pin: ".belief-system-section",
+      endTrigger: ".belief-system-trigger",
+    },
+    {
+      pin: "#innovation-stories",
+      endTrigger: ".i-s-trigger",
+    },
+  ];
+
+  const media = gsap.matchMedia();
+
+  media.add("(min-width: 768px)", () => {
+    const pins = [];
+    const originalStickyClasses = [];
+
+    pinScenes.forEach(({ pin: pinSelector, endTrigger: endSelector }) => {
+      const pinElement = document.querySelector(pinSelector);
+      const endTrigger = document.querySelector(endSelector);
+
+      if (!pinElement || !endTrigger) return;
+
+      originalStickyClasses.push({
+        element: pinElement,
+        hadClass: pinElement.classList.contains("u-position-sticky"),
+      });
+
+      // Disable the conflicting native sticky rule while ScrollTrigger owns
+      // the pin. The class is restored on media cleanup.
+      pinElement.classList.remove("u-position-sticky");
+
+      pins.push(
+        ScrollTrigger.create({
+          trigger: pinElement,
+          pin: pinElement,
+          start: "top top",
+          endTrigger,
+          end: "bottom bottom",
+          pinSpacing: true,
+          anticipatePin: 1,
+          invalidateOnRefresh: true,
+        }),
+      );
+    });
+
+    requestAnimationFrame(() => ScrollTrigger.refresh());
+
+    return () => {
+      pins.forEach((pin) => pin.kill());
+      originalStickyClasses.forEach(({ element, hadClass }) => {
+        if (hadClass) element.classList.add("u-position-sticky");
+      });
+    };
+  });
+}
+
 function initBeliefSystemTextAnimation() {
   const mountain = document.querySelector(".bonsai-img-outer");
   const mountainStartY = mountain
@@ -2345,6 +2423,7 @@ function initBeliefCardResponsiveScale() {
 
 document.addEventListener("DOMContentLoaded", () => {
   document.fonts?.ready.then(() => {
+    initScrollSmootherStickyPins();
     initBeliefSystemTextAnimation();
     initBonsaiWebGPUVideo();
     openFounderNote();
