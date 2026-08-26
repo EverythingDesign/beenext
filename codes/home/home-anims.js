@@ -839,7 +839,7 @@ function openFounderNote() {
     closeTimer = null;
 
     founderNote.style.display = "block";
-    lenis.lock();
+    window.lenis?.lock?.();
     AudioManager.playSfx("founderOpen");
 
     openFrame = requestAnimationFrame(() => {
@@ -868,7 +868,7 @@ function openFounderNote() {
       if (isOpen) return;
 
       founderNote.style.display = "none";
-      lenis.unlock();
+      window.lenis?.unlock?.();
     }, 400);
   }
 
