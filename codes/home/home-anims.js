@@ -90,11 +90,7 @@ let rememberedBeliefCard = null;
  * use their existing spacer elements as the pin end points.
  */
 function initScrollSmootherStickyPins() {
-  if (
-    !window.gsap ||
-    !window.ScrollTrigger ||
-    !window.ScrollSmoother?.get()
-  ) return;
+  if (!window.gsap || !window.ScrollTrigger) return;
 
   const pinScenes = [
     {
@@ -143,7 +139,10 @@ function initScrollSmootherStickyPins() {
           start: "top top",
           endTrigger,
           end: "bottom bottom",
-          pinSpacing: true,
+          // The existing trigger spacer already provides the scroll distance.
+          // Adding ScrollTrigger's duration padding would duplicate that
+          // space and make the following scene drift/overlap.
+          pinSpacing: false,
           anticipatePin: 1,
           invalidateOnRefresh: true,
         }),
