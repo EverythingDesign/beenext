@@ -2359,8 +2359,18 @@ function initBeliefCardResponsiveScale() {
 
   updateScale();
 
-  window.addEventListener("resize", updateScale);
-  window.visualViewport?.addEventListener("resize", updateScale);
+  if (window.matchMedia("(min-width: 768px)").matches) {
+    window.addEventListener("resize", updateScale, {
+      passive: true,
+    });
+
+    window.visualViewport?.addEventListener("resize", updateScale, {
+      passive: true,
+    });
+  }
+
+  // window.addEventListener("resize", updateScale);
+  // window.visualViewport?.addEventListener("resize", updateScale);
 }
 
 
