@@ -879,7 +879,7 @@ function openFounderNote() {
     closeTimer = null;
 
     founderNote.style.display = "block";
-    lenis.stop();
+    lenis.lock();
     AudioManager.playSfx("founderOpen");
 
     openFrame = requestAnimationFrame(() => {
@@ -908,7 +908,7 @@ function openFounderNote() {
       if (isOpen) return;
 
       founderNote.style.display = "none";
-      lenis.start();
+      lenis.unlock();
     }, 400);
   }
 
@@ -1030,7 +1030,7 @@ function openYouTubePopup() {
 
     popupFrame.replaceChildren(createYouTubeIframe(embedUrl));
     popup.style.display = "flex";
-    window.lenis?.stop();
+    window.lenis?.lock();
     pauseBackgroundAudio();
 
     openFrame = requestAnimationFrame(() => {
@@ -1059,7 +1059,7 @@ function openYouTubePopup() {
 
       popup.style.display = "none";
       popupFrame.replaceChildren();
-      window.lenis?.start();
+      window.lenis?.unlock();
       resumeBackgroundAudio();
     }, 400);
   }
