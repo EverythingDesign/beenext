@@ -114,47 +114,7 @@ function initBeliefSystemTextAnimation() {
       scrub: 1.2
     },
   });
-  beliefTimeline
-  .to(
-    "[eyebrow-text]",
-    {
-      x: 0,
-      opacity: 1,
-      duration: 0.7,
-      ease: "power3.out",
-    },
-  )
-  .to(
-    "[eyebrow-text] .char",
-    {
-      opacity: 1,
-      duration: 0.6,
-      ease: "power3.out",
-      stagger: 0.02,
-    },
-    "0.15",
-  )
-  .to(
-    "[heading-text]",
-    {
-      x: 0,
-      opacity: 1,
-      duration: 0.7,
-      ease: "power3.out",
-    },
-    0.15,
-  )
-  .to(
-    "[heading-text] .char",
-    {
-      opacity: 1,
-      duration: 0.6,
-      ease: "power3.out",
-      stagger: 0.02,
-    },
-    "<0.15",
-  )
-  .to(
+  beliefTimeline.to(
     ".belief_heading p .word",
     {
       yPercent: 0,
