@@ -1,3 +1,60 @@
+// Shared scroll lock that uses Lenis on desktop and native locking on mobile.
+// Native position locking is used on iOS/Android because overflow:hidden alone
+// does not reliably stop touch scrolling there.
+const BNScroll = (() => {
+  let nativeLocked = false;
+  let nativeScrollY = 0;
+  let previousBodyStyles = null;
+
+  const isMobile = () =>
+    window.matchMedia("(max-width: 767px)").matches;
+
+  function lock() {
+    if (!isMobile() && window.lenis?.lock) {
+      window.lenis.lock();
+      return;
+    }
+
+    if (nativeLocked) return;
+
+    nativeLocked = true;
+    nativeScrollY = window.scrollY || window.pageYOffset || 0;
+    previousBodyStyles = {
+      position: document.body.style.position,
+      top: document.body.style.top,
+      left: document.body.style.left,
+      right: document.body.style.right,
+      width: document.body.style.width,
+      overflow: document.body.style.overflow,
+    };
+
+    Object.assign(document.body.style, {
+      position: "fixed",
+      top: `-${nativeScrollY}px`,
+      left: "0",
+      right: "0",
+      width: "100%",
+      overflow: "hidden",
+    });
+  }
+
+  function unlock() {
+    if (nativeLocked) {
+      Object.assign(document.body.style, previousBodyStyles);
+      nativeLocked = false;
+      window.scrollTo(0, nativeScrollY);
+      previousBodyStyles = null;
+      return;
+    }
+
+    window.lenis?.unlock?.();
+  }
+
+  return { lock, unlock };
+})();
+
+window.BNScroll = BNScroll;
+
 // Bee Track Animation
 (function initBeeTrackAnimation() {
   const bee = document.querySelector(".big-bee");
@@ -879,7 +936,7 @@ function openFounderNote() {
     closeTimer = null;
 
     founderNote.style.display = "block";
-    window.lenis?.lock?.();
+    BNScroll.lock();
     AudioManager.playSfx("founderOpen");
 
     openFrame = requestAnimationFrame(() => {
@@ -908,7 +965,7 @@ function openFounderNote() {
       if (isOpen) return;
 
       founderNote.style.display = "none";
-      window.lenis?.unlock?.();
+      BNScroll.unlock();
     }, 400);
   }
 
@@ -1030,7 +1087,7 @@ function openYouTubePopup() {
 
     popupFrame.replaceChildren(createYouTubeIframe(embedUrl));
     popup.style.display = "flex";
-    window.lenis?.lock();
+    BNScroll.lock();
     pauseBackgroundAudio();
 
     openFrame = requestAnimationFrame(() => {
@@ -1059,7 +1116,7 @@ function openYouTubePopup() {
 
       popup.style.display = "none";
       popupFrame.replaceChildren();
-      window.lenis?.unlock();
+      BNScroll.unlock();
       resumeBackgroundAudio();
     }, 400);
   }
