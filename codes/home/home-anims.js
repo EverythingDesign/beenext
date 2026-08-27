@@ -303,6 +303,7 @@ async function initBonsaiWebGPUVideo() {
   const outer = document.querySelector(".bonsai-img-outer");
   const trigger = document.querySelector(".belief-system-trigger");
   const beliefSection = document.querySelector(".belief-system-section");
+  const isMobileViewport = window.matchMedia("(max-width: 767px)").matches;
 
   if (
     !outer ||
@@ -571,7 +572,9 @@ async function initBonsaiWebGPUVideo() {
     canvas.style.aspectRatio = `${frameWidth} / ${frameHeight}`;
 
     const adapter = await navigator.gpu.requestAdapter({
-      powerPreference: "high-performance",
+      // Avoid forcing a high-power GPU on mobile; this helps prevent
+      // throttling when several canvas instances are present.
+      powerPreference: isMobileViewport ? "low-power" : "high-performance",
     });
     if (!adapter) throw new Error("No WebGPU adapter was found.");
 
@@ -667,6 +670,8 @@ async function initBonsaiWebGPUVideo() {
     let renderWarningShown = false;
     let seekFrame = null;
     let pendingVideoTime = 0;
+    let seekInProgress = false;
+    const scrubFrameDuration = isMobileViewport ? 1 / 30 : 1 / 60;
 
     device.lost.then(() => {
       deviceIsLost = true;
@@ -675,7 +680,12 @@ async function initBonsaiWebGPUVideo() {
     });
 
     function resizeCanvas() {
-      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      // A mobile DPR of 2–3 multiplies the WebGPU fill cost by 4–9x.
+      // 1.5 stays sharp while substantially reducing that cost.
+      const pixelRatio = Math.min(
+        window.devicePixelRatio || 1,
+        isMobileViewport ? 1.5 : 2,
+      );
       const width = Math.max(1, Math.round(canvas.clientWidth * pixelRatio));
       const height = Math.max(1, Math.round(canvas.clientHeight * pixelRatio));
 
@@ -736,22 +746,52 @@ async function initBonsaiWebGPUVideo() {
     }
 
     function queueVideoSeek(time) {
-      pendingVideoTime = time;
+      // Coalesce rapid ScrollTrigger updates and seek on video-frame steps.
+      pendingVideoTime = Math.min(
+        maxVideoTime,
+        Math.max(
+          0,
+          Math.round(time / scrubFrameDuration) * scrubFrameDuration,
+        ),
+      );
+
+      if (seekInProgress) return;
       if (seekFrame !== null) return;
 
       seekFrame = requestAnimationFrame(() => {
         seekFrame = null;
 
-        if (Math.abs(video.currentTime - pendingVideoTime) < 1 / 120) {
+        if (seekInProgress) return;
+
+        if (
+          Math.abs(video.currentTime - pendingVideoTime) <
+          scrubFrameDuration / 2
+        ) {
           renderVideoFrame();
           return;
         }
 
-        video.currentTime = pendingVideoTime;
+        try {
+          seekInProgress = true;
+          video.currentTime = pendingVideoTime;
+        } catch {
+          seekInProgress = false;
+        }
       });
     }
 
-    const handleSeeked = () => renderVideoFrame();
+    const handleSeeked = () => {
+      seekInProgress = false;
+      renderVideoFrame();
+
+      // If scrolling moved while decoding, process only the latest position.
+      if (
+        Math.abs(video.currentTime - pendingVideoTime) >=
+        scrubFrameDuration / 2
+      ) {
+        queueVideoSeek(pendingVideoTime);
+      }
+    };
     const resizeObserver = new ResizeObserver(() => {
       resizeCanvas();
       renderVideoFrame();
@@ -1090,7 +1130,6 @@ function initBeeNetworkAnimation() {
   const gsap = window.gsap;
   const isMobile = window.matchMedia("(max-width: 767px)").matches;
   const networkSection = document.querySelector("#the-network-effect");
-  let activeItem = null;
   let activeTimeline = null;
   const buttons = [
     document.querySelector("#bee-network-1"),
@@ -1129,15 +1168,23 @@ function initBeeNetworkAnimation() {
           end: "top 20%",
           scrub: 1,
           onUpdate: (self) => {
-            const item = activeItem;
+            const openButton = networkSection?.querySelector(
+              '.network-btn_wrap button[aria-expanded="true"]',
+            );
+            const openIndex = buttons.indexOf(openButton);
+            const reverseThreshold =
+              openIndex >= 0
+                ? (openIndex * 0.5 + 0.5) /
+                  (0.5 + 0.5 * (buttons.length - 1))
+                : 0;
 
             // Reverse the opened card when its own button starts reversing.
             // The staggered entrance is 0.5s per item with a 0.5s gap.
             if (
               self.direction !== -1 ||
-              !item ||
+              openIndex < 0 ||
               !activeTimeline ||
-              self.progress > item.entranceReverseThreshold
+              self.progress > reverseThreshold
             ) {
               return;
             }
@@ -1300,9 +1347,6 @@ function initBeeNetworkAnimation() {
         contentOuter,
         connectedContent,
         lineReveal: createLineReveal(linePath, index),
-        // Matches the point where this button begins reversing in beeNetTl.
-        entranceReverseThreshold:
-          (index * 0.5 + 0.5) / (0.5 + 0.5 * (buttons.length - 1)),
       };
     })
     .filter(Boolean);
@@ -1310,7 +1354,10 @@ function initBeeNetworkAnimation() {
   if (!items.length) return;
 
   function reverseActiveNetworkItem() {
-    const item = activeItem;
+    const openButton = items.find(
+      (item) => item.button.getAttribute("aria-expanded") === "true",
+    )?.button;
+    const item = items.find((candidate) => candidate.button === openButton);
     const timeline = activeTimeline;
 
     if (!item) return;
@@ -1318,7 +1365,6 @@ function initBeeNetworkAnimation() {
     // Reduced-motion mode has no opening timeline to reverse.
     if (!timeline) {
       resetItem(item);
-      activeItem = null;
       return;
     }
 
@@ -1329,7 +1375,6 @@ function initBeeNetworkAnimation() {
       if (activeTimeline !== timeline) return;
 
       activeTimeline = null;
-      activeItem = null;
       resetItem(item);
     });
     timeline.reverse();
@@ -1366,7 +1411,6 @@ function initBeeNetworkAnimation() {
       items.forEach(resetItem);
 
       activeTimeline = null;
-      activeItem = item;
 
       item.wrapper.classList.add("is-active");
       item.button.setAttribute("aria-expanded", "true");
