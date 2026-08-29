@@ -1125,17 +1125,21 @@ function initBeliefCardAccordion() {
 }
 
 
-// Bee Network mobile slider and desktop click sequence
+// Bee Network mobile slider and desktop hover sequence
 function initBeeNetworkAnimation() {
   const gsap = window.gsap;
   const isMobile = window.matchMedia("(max-width: 767px)").matches;
   const networkSection = document.querySelector("#the-network-effect");
   let activeTimeline = null;
+  let hoverExitTween = null;
   const buttons = [
     document.querySelector("#bee-network-1"),
     document.querySelector("#bee-network-2"),
     document.querySelector("#bee-network-3"),
   ].filter(Boolean);
+  const networkWrappers = buttons
+    .map((button) => button.closest(".network-btn_wrap"))
+    .filter(Boolean);
   const tapIndicator = document.querySelector(
     "#the-network-effect .tap-indicator",
   );
@@ -1144,9 +1148,11 @@ function initBeeNetworkAnimation() {
   ).matches;
 
   buttons.forEach((button) => {
-    button.addEventListener("click", () => {
-      AudioManager.playSfx("clickAction");
-    });
+    if (isMobile) {
+      button.addEventListener("click", () => {
+        AudioManager.playSfx("clickAction");
+      });
+    }
   });
 
   if (
@@ -1166,7 +1172,7 @@ function initBeeNetworkAnimation() {
           trigger: "#the-network-effect",
           start: "top center",
           end: "top 20%",
-          scrub: 1,
+          toggleActions: "play none none reverse",
           onUpdate: (self) => {
             const openButton = networkSection?.querySelector(
               '.network-btn_wrap button[aria-expanded="true"]',
@@ -1194,15 +1200,18 @@ function initBeeNetworkAnimation() {
         },
       });
 
-      beeNetTl.from(buttons, {
-        opacity: 0,
-        yPercent: 100,
-        scale: 0,
-        transformOrigin: "50% 50%",
-        duration: 0.5,
-        stagger: 0.5,
-        ease: "power2.out",
-      });
+      beeNetTl.from(
+        networkWrappers.length === buttons.length ? networkWrappers : buttons,
+        {
+          opacity: 0,
+          yPercent: 100,
+          scale: 0,
+          transformOrigin: "50% 50%",
+          duration: 0.5,
+          stagger: 0.1,
+          ease: "power2.out",
+        },
+      );
 
       if (tapIndicator) {
 
@@ -1354,6 +1363,9 @@ function initBeeNetworkAnimation() {
   if (!items.length) return;
 
   function reverseActiveNetworkItem() {
+    hoverExitTween?.kill();
+    hoverExitTween = null;
+
     const openButton = items.find(
       (item) => item.button.getAttribute("aria-expanded") === "true",
     )?.button;
@@ -1388,6 +1400,7 @@ function initBeeNetworkAnimation() {
     gsap.set(item.contentOuter, {
       autoAlpha: 0,
       scale: 0.9,
+      y: 0,
       transformOrigin: "50% 50%",
     });
     gsap.set(item.connectedContent, {
@@ -1405,8 +1418,34 @@ function initBeeNetworkAnimation() {
 
   items.forEach(resetItem);
 
+  function fadeOutHoveredItem(item) {
+    if (item.button.getAttribute("aria-expanded") !== "true") return;
+
+    activeTimeline?.kill();
+    activeTimeline = null;
+    hoverExitTween?.kill();
+
+    const exitTween = gsap.to(item.contentOuter, {
+      y: -10,
+      autoAlpha: 0,
+      duration: 0.35,
+      ease: "power2.out",
+      overwrite: true,
+      onComplete: () => {
+        if (hoverExitTween !== exitTween) return;
+
+        hoverExitTween = null;
+        resetItem(item);
+      },
+    });
+
+    hoverExitTween = exitTween;
+  }
+
   items.forEach((item) => {
-    item.button.addEventListener("click", () => {
+    const openItem = () => {
+      hoverExitTween?.kill();
+      hoverExitTween = null;
       activeTimeline?.kill();
       items.forEach(resetItem);
 
@@ -1430,7 +1469,7 @@ function initBeeNetworkAnimation() {
         return;
       }
 
-      // Force a reflow so the CSS sprite animation restarts on every click.
+      // Force a reflow so the CSS sprite animation restarts on every hover.
       void item.button.offsetWidth;
       item.button.style.animation =
         "flower-bee-loop 0.3s step-end forwards";
@@ -1462,6 +1501,12 @@ function initBeeNetworkAnimation() {
         duration: 1,
         ease: "power3.out",
       }, "<0.5");
+    };
+
+    // Desktop uses hover; mobile continues to use Swiper/tap interaction.
+    item.button.addEventListener("mouseenter", openItem);
+    item.wrapper.addEventListener("mouseleave", () => {
+      fadeOutHoveredItem(item);
     });
   });
 
@@ -2290,7 +2335,9 @@ function initPortfolioSwiper() {
       scrollTrigger: {
         trigger: "#portfolio",
         start: "top center",
-        toggleActions: "play none none reverse",
+        // Spread the cards only on the first downward entry. The animation
+        // must not reverse or replay when the user scrolls back past it.
+        once: true,
       },
     });
   });
