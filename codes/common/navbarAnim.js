@@ -53,6 +53,7 @@ function initMobileNavbarMenu() {
     navLinks.style.display = "flex";
     menuButton.setAttribute("aria-expanded", "true");
     menuButton.classList.add("is-active");
+    window.BNScroll?.lock?.();
 
     openTimer = window.setTimeout(() => {
       openTimer = null;
@@ -71,6 +72,7 @@ function initMobileNavbarMenu() {
     }
     navLinks.classList.remove("is-open");
     menuButton.classList.remove("is-active");
+    window.BNScroll?.unlock?.();
     resetNavItems();
     menuButton.setAttribute("aria-expanded", "false");
 
@@ -104,6 +106,7 @@ function initMobileNavbarMenu() {
     closeTimer = null;
 
     if (!matches) {
+      window.BNScroll?.unlock?.();
       navLinks.classList.remove("is-open");
       navLinks.style.removeProperty("display");
       menuButton.classList.remove("is-active");
