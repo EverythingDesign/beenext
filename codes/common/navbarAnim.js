@@ -60,7 +60,7 @@ function initMobileNavbarMenu() {
         navLinks.classList.add("is-open");
         revealNavItems();
       }
-    }, 500);
+    }, 0);
   }
 
   function closeMenu() {
