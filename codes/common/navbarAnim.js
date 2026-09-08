@@ -120,10 +120,86 @@ function initMobileNavbarMenu() {
   });
 }
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initMobileNavbarMenu, {
+// Keep the navigation colors in sync with the section behind the fixed nav.
+function initNavbarBackgroundState() {
+  const nav = document.querySelector(".nav_component");
+  const whiteBackgrounds = [
+    ...document.querySelectorAll(".u-background-2"),
+  ];
+
+  if (!nav || !whiteBackgrounds.length) return;
+
+  const whiteBackgroundClass = "is-white-bg";
+  const surfaceSelector =
+    ".u-background-2, .u-background-1, .u-background-cream, .u-section, footer";
+  let frame = null;
+
+  function isWhiteBackgroundAtViewportTop() {
+    const probeX = Math.max(
+      0,
+      Math.min(window.innerWidth - 1, window.innerWidth / 2),
+    );
+    const probeY = Math.max(0, Math.min(window.innerHeight - 1, 1));
+
+    if (document.elementsFromPoint) {
+      const elementsAtTop = document.elementsFromPoint(probeX, probeY);
+
+      for (const element of elementsAtTop) {
+        if (element === nav || nav.contains(element)) continue;
+
+        const surface = element.closest(surfaceSelector);
+        if (!surface || surface === nav || nav.contains(surface)) continue;
+
+        return surface.classList.contains("u-background-2");
+      }
+    }
+
+    return whiteBackgrounds.some((background) => {
+      const bounds = background.getBoundingClientRect();
+      return bounds.top <= probeY && bounds.bottom > probeY;
+    });
+  }
+
+  function updateNavbarBackground() {
+    frame = null;
+    nav.classList.toggle(
+      whiteBackgroundClass,
+      isWhiteBackgroundAtViewportTop(),
+    );
+  }
+
+  function scheduleNavbarBackgroundUpdate() {
+    if (frame !== null) return;
+    frame = window.requestAnimationFrame(updateNavbarBackground);
+  }
+
+  updateNavbarBackground();
+  window.addEventListener("scroll", scheduleNavbarBackgroundUpdate, {
+    passive: true,
+  });
+  window.addEventListener("resize", scheduleNavbarBackgroundUpdate, {
+    passive: true,
+  });
+  window.addEventListener("load", scheduleNavbarBackgroundUpdate, {
     once: true,
   });
+  window.addEventListener("pageshow", scheduleNavbarBackgroundUpdate);
+  window.ScrollTrigger?.addEventListener(
+    "refresh",
+    scheduleNavbarBackgroundUpdate,
+  );
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener(
+    "DOMContentLoaded",
+    () => {
+      initMobileNavbarMenu();
+      initNavbarBackgroundState();
+    },
+    { once: true },
+  );
 } else {
   initMobileNavbarMenu();
+  initNavbarBackgroundState();
 }
