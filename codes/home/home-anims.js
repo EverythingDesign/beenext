@@ -126,6 +126,27 @@ function initBeliefSystemTextAnimation() {
   );
 
   const beliefHeading = document.querySelector(".belief_heading");
+  const beliefSection = document.querySelector(".belief-system-section");
+
+  // Expose the space below the heading so CSS can size the bonsai to fit it.
+  // offsetTop/offsetHeight ignore GSAP transforms on the heading.
+  function setBonsaiSpace() {
+    if (!beliefSection || !beliefHeading?.parentElement) return;
+
+    const area = beliefHeading.parentElement;
+    const space =
+      area.clientHeight - (beliefHeading.offsetTop + beliefHeading.offsetHeight);
+
+    beliefSection.style.setProperty("--bonsai-space", `${Math.max(0, space)}px`);
+  }
+
+  if (beliefHeading?.parentElement) {
+    setBonsaiSpace();
+    const bonsaiSpaceObserver = new ResizeObserver(setBonsaiSpace);
+    bonsaiSpaceObserver.observe(beliefHeading.parentElement);
+    bonsaiSpaceObserver.observe(beliefHeading);
+  }
+
   const beliefCards = gsap.utils.toArray(".belief-card");
   const firstCard = beliefCards[0];
   const beliefMedia = gsap.matchMedia();
