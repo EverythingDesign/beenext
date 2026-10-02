@@ -201,8 +201,8 @@ function initBeliefSystemTextAnimation() {
         },
         "<",
       )
-      .from(beliefCards, {
-        opacity: 0,
+      .to(beliefCards, {
+        opacity: 1,
         stagger: 0.2,
         duration: 0.5,
         ease: "none",
@@ -265,8 +265,8 @@ function initBeliefSystemTextAnimation() {
     });
 
     beliefCardTimeline
-      .from(beliefCards, {
-        opacity: 0,
+      .to(beliefCards, {
+        opacity: 1,
         stagger: 0.2,
         duration: 0.5,
         ease: "none",
@@ -324,6 +324,7 @@ async function initBonsaiWebGPUVideo() {
   const outer = document.querySelector(".bonsai-img-outer");
   const trigger = document.querySelector(".belief-system-trigger");
   const beliefSection = document.querySelector(".belief-system-section");
+  const mountainWrap = document.querySelector(".mountain-img-wrap");
   const isMobileViewport = window.matchMedia("(max-width: 767px)").matches;
 
   if (
@@ -560,9 +561,9 @@ async function initBonsaiWebGPUVideo() {
           const isMobile = context.conditions.mobile;
 
           scrollTrigger = ScrollTrigger.create({
-            trigger: isMobile ? beliefSection : trigger,
-            start: isMobile ? "top center" : "top bottom",
-            end: "top top",
+            trigger: isMobile ? mountainWrap || beliefSection : trigger,
+            start: isMobile ? "top 95%" : "top bottom",
+            end: isMobile ? "top center" : "top 45%",
             animation: scrubTween,
             scrub: true,
             invalidateOnRefresh: true,
@@ -845,9 +846,9 @@ async function initBonsaiWebGPUVideo() {
         const isMobile = context.conditions.mobile;
 
         scrollTrigger = ScrollTrigger.create({
-          trigger: isMobile ? beliefSection : trigger,
-          start: isMobile ? "top center" : "top bottom",
-          end: "top top",
+          trigger: isMobile ? mountainWrap || beliefSection : trigger,
+          start: isMobile ? "top 95%" : "top bottom",
+          end: "top center",
           animation: scrubTween,
           scrub: true,
           invalidateOnRefresh: true,
