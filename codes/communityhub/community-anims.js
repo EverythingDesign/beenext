@@ -29,8 +29,10 @@ function hidePreloaderFallback() {
 }
 
 // `dandelion:grow` fires a little before the shrink ends, while the
-// preloader is still on screen. Dandelion removes the preloader from the DOM
-// once it has fully faded, so this waits for that removal instead.
+// preloader is still on screen. Once the shrink is done, Dandelion fades the
+// preloader to opacity 0 and then removes it; this runs as that fade begins,
+// so the intro starts while the last of the preloader dissolves. Removal is
+// the fallback.
 function onPreloaderGone(callback) {
   const preloader = document.getElementById(PRELOADER_ID);
 
@@ -39,13 +41,24 @@ function onPreloaderGone(callback) {
     return;
   }
 
-  const observer = new MutationObserver(() => {
-    if (preloader.isConnected) return;
-    observer.disconnect();
+  let done = false;
+  const run = () => {
+    if (done) return;
+    done = true;
+    fadeObserver.disconnect();
+    removeObserver.disconnect();
     callback();
+  };
+
+  const fadeObserver = new MutationObserver(() => {
+    if (preloader.style.opacity === "0") run();
+  });
+  const removeObserver = new MutationObserver(() => {
+    if (!preloader.isConnected) run();
   });
 
-  observer.observe(preloader.parentNode, { childList: true });
+  fadeObserver.observe(preloader, { attributes: true, attributeFilter: ["style"] });
+  removeObserver.observe(preloader.parentNode, { childList: true });
 }
 
 // Runs the callback once, when the dandelion grows in, or right away if it
@@ -76,11 +89,14 @@ function onDandelionGrow(callback) {
   }, PRELOADER_TIMEOUT_MS);
 }
 
-// Every hero move starts and ends at rest, so nothing snaps into place.
+// Every hero move ends at rest, so nothing snaps into place. The scroll swap
+// also eases in; the load-in starts moving straight away so it doesn't feel
+// late after the preloader.
 const SOFT_EASE = "sine.inOut";
-const RISE_DURATION = 1.6;
-const RISE_STAGGER = 0.08;
-const SUBHERO_FADE_DURATION = 1;
+const INTRO_EASE = "sine.out";
+const RISE_DURATION = 1.1;
+const RISE_STAGGER = 0.05;
+const SUBHERO_FADE_DURATION = 0.7;
 const SWAP_DURATION = 0.9;
 
 // Scoped to #main: the page also keeps a hidden style holder with the
@@ -226,7 +242,7 @@ function initCommunityHeroAnimation() {
         yPercent: 0,
         opacity: 1,
         duration: RISE_DURATION,
-        ease: SOFT_EASE,
+        ease: INTRO_EASE,
         stagger: RISE_STAGGER,
         clearProps: "willChange",
       };
@@ -243,7 +259,7 @@ function initCommunityHeroAnimation() {
           {
             opacity: 1,
             duration: SUBHERO_FADE_DURATION,
-            ease: SOFT_EASE,
+            ease: INTRO_EASE,
           },
           riseDuration(leadChars) / 2,
         );
