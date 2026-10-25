@@ -123,8 +123,10 @@ function initMobileNavbarMenu() {
 // Keep the navigation colors in sync with the section behind the fixed nav.
 function initNavbarBackgroundState() {
   const nav = document.querySelector(".nav_component");
+  // Light surfaces (white and cream) need the dark-blue nav.
+  const lightBackgroundSelector = ".u-background-2, .u-background-cream";
   const whiteBackgrounds = [
-    ...document.querySelectorAll(".u-background-2"),
+    ...document.querySelectorAll(lightBackgroundSelector),
   ];
 
   if (!nav || !whiteBackgrounds.length) return;
@@ -150,7 +152,7 @@ function initNavbarBackgroundState() {
         const surface = element.closest(surfaceSelector);
         if (!surface || surface === nav || nav.contains(surface)) continue;
 
-        return surface.classList.contains("u-background-2");
+        return surface.matches(lightBackgroundSelector);
       }
     }
 
