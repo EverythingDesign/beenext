@@ -281,6 +281,119 @@ const MARQUEE_SPEED = 40;
 // Seconds for a flick to settle back into the drift.
 const MARQUEE_SETTLE = 0.8;
 
+// Each CMS item is one event, and its photos come from the Event Images field
+// through a Collection List nested inside the item. Every photo becomes its own
+// tile carrying the event's caption. Items without the nested list keep their
+// single Image.
+const MOMENT_MEDIA_SELECTOR = ".moments_media";
+const MOMENT_EVENT_IMAGES_SELECTOR = ".w-dyn-list img";
+const MOMENT_IMAGE_CLASS = "moments_image";
+// Photos at least this tall (in px) are cut for the tall Featured tile; the
+// rest use the standard tile height. Either way the width follows the photo.
+const MOMENT_FEATURED_MIN_HEIGHT = 400;
+// Stop waiting for photos that never load and size them as Landscape.
+const MOMENT_IMAGE_TIMEOUT_MS = 4000;
+
+function createMomentTile(item, image) {
+  const tile = item.cloneNode(true);
+  tile.querySelectorAll(".w-dyn-list").forEach((list) => list.remove());
+
+  const photo = image.cloneNode(true);
+  photo.className = MOMENT_IMAGE_CLASS;
+  // Off-screen tiles must load before the loop is measured.
+  photo.loading = "eager";
+  photo.draggable = false;
+  if (!photo.alt) {
+    const event = item.querySelector(".moments_caption p")?.textContent.trim();
+    photo.alt = event ? `Community moment at ${event}` : "";
+  }
+
+  const media = tile.querySelector(MOMENT_MEDIA_SELECTOR);
+  media.replaceChildren(photo);
+  return tile;
+}
+
+// Lays the photos out in a fixed order that keeps photos of the same event
+// apart: each step takes the event with the most photos left, other than the
+// event just placed (ties go to the CMS order). The strip loops, so the last
+// tile is moved if it would sit next to the first.
+function orderMomentTiles(events) {
+  const queues = events.map((tiles) => [...tiles]);
+  const ordered = [];
+  let previous = -1;
+
+  while (queues.some((queue) => queue.length)) {
+    let pick = -1;
+    queues.forEach((queue, index) => {
+      if (!queue.length || index === previous) return;
+      if (pick === -1 || queue.length > queues[pick].length) pick = index;
+    });
+    // Only the event just placed has photos left.
+    if (pick === -1) pick = previous;
+
+    ordered.push({ event: pick, tile: queues[pick].shift() });
+    previous = pick;
+  }
+
+  const count = ordered.length;
+  if (count > 2 && ordered[count - 1].event === ordered[0].event) {
+    const last = ordered[count - 1];
+    for (let index = 1; index < count - 1; index += 1) {
+      const fits =
+        ordered[index - 1].event !== last.event &&
+        ordered[index].event !== last.event &&
+        ordered[count - 2].event !== ordered[0].event;
+      if (fits) {
+        ordered.splice(index, 0, ordered.pop());
+        break;
+      }
+    }
+  }
+
+  return ordered.map(({ tile }) => tile);
+}
+
+// Replaces the event items with one tile per photo, in display order.
+function buildMomentTiles(list) {
+  const events = [...list.children].map((item) => {
+    const images = [...item.querySelectorAll(MOMENT_EVENT_IMAGES_SELECTOR)];
+    if (!images.length) return [item];
+    return images.map((image) => createMomentTile(item, image));
+  });
+
+  const tiles = orderMomentTiles(events);
+  list.replaceChildren(...tiles);
+  return tiles;
+}
+
+function waitForImage(image) {
+  if (image.complete) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, MOMENT_IMAGE_TIMEOUT_MS);
+    const done = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    image.addEventListener("load", done, { once: true });
+    image.addEventListener("error", done, { once: true });
+  });
+}
+
+// Picks the tile height from the photo's shape and sets the width to match, so
+// no photo is cropped. Tiles whose photo has not loaded keep the CMS layout.
+function sizeMomentTile(tile) {
+  const media = tile.querySelector(MOMENT_MEDIA_SELECTOR);
+  const image = media?.querySelector("img");
+  if (!image?.naturalWidth || !image.naturalHeight) return;
+
+  media.dataset.layout =
+    image.naturalHeight >= MOMENT_FEATURED_MIN_HEIGHT ? "Featured" : "Landscape";
+  media.style.width = "";
+  const height = media.getBoundingClientRect().height;
+  media.style.width = `${(height * image.naturalWidth) / image.naturalHeight}px`;
+}
+
 function initMomentsMarquee() {
   const marquee = document.querySelector(MARQUEE_SELECTOR);
   const list = marquee?.querySelector(MARQUEE_LIST_SELECTOR);
@@ -291,7 +404,7 @@ function initMomentsMarquee() {
     "(prefers-reduced-motion: reduce)",
   ).matches;
   const cruise = prefersReducedMotion ? 0 : -MARQUEE_SPEED;
-  const originals = [...list.children];
+  const originals = buildMomentTiles(list);
 
   let clones = [];
   let loopWidth = 0;
@@ -310,6 +423,7 @@ function initMomentsMarquee() {
   const build = () => {
     clones.forEach((clone) => clone.remove());
     clones = [];
+    originals.forEach(sizeMomentTile);
 
     const gap = parseFloat(getComputedStyle(list).columnGap) || 0;
     loopWidth = list.scrollWidth + gap;
@@ -409,39 +523,62 @@ function initMomentsMarquee() {
   build();
   render();
   frame = requestAnimationFrame(tick);
+
+  // Tile widths come from the photos, so measure the loop again once they load.
+  const images = originals.flatMap((tile) => [...tile.querySelectorAll("img")]);
+  Promise.all(images.map(waitForImage)).then(() => {
+    build();
+    x = loopWidth ? wrap(x) : 0;
+    render();
+  });
 }
 
 // Falling seeds (#about-community)
 //
-// The seeds placed in the section's background layer drift down through it,
-// the way a dandelion seed does: slowly, hanging under its tuft, swinging from
-// side to side and tilting with each swing, a little slower at the ends of the
-// swing. Each starts from where it sits in Webflow and, once below the section,
-// comes back in from above, fading in as it enters. Every seed has its own
-// pace, so they never move in step. Only transforms and opacity are animated;
-// size and placement stay in Webflow.
+// The seeds in the section's background layer carry on the fall from the hero
+// above, the way a dandelion seed comes down: slowly, hanging under its tuft,
+// swinging from side to side and tilting with each swing, a little slower at
+// the ends of the swing. Seeds only ever fall.
+//
+// While the join between the two sections is on screen, a seed only comes in
+// when the hero's Dandelion hands one off (`dandelion:seedfall`): a waiting
+// seed takes over at the same spot and speed, fading in as the hero's fades
+// out. Further down, with the join scrolled away, seeds come back in from
+// above on their own. Each starts from where it sits in Webflow. The hero lets
+// seeds go faster than six can fall through, so each seed is copied once as a
+// stand-in that only ever carries on a seed from the hero. Only transforms and
+// opacity are animated; size and placement stay in Webflow.
 
 const FALLING_SEEDS_SELECTOR = "[data-falling-seeds]";
 const FALLING_SEED_SELECTOR = ".falling-seed";
-// Seconds for a seed to fall through the section, slowest and fastest.
-const SEED_FALL_TIME = [18, 28];
+const DANDELION_SEED_FALL_EVENT = "dandelion:seedfall";
+// Fall speed, in viewport heights per second, matching the hero's seeds.
+const SEED_FALL_SPEED = [0.045, 0.07];
 // Side-to-side swing: px each way, and seconds per full swing.
 const SEED_SWAY = [16, 34];
 const SEED_SWAY_PERIOD = [4.5, 7];
 // Tilt, in degrees each way, at the ends of the swing.
 const SEED_TILT = [8, 16];
-// Fraction of the section height over which an entering seed fades in.
+// Fraction of the layer height over which an entering seed fades in.
 const SEED_FADE_IN = 0.12;
-// Extra wait above the section before a seed comes back, as a fraction of its
-// height. It differs per seed, so seeds that leave together return apart.
-const SEED_RETURN_GAP = [0.05, 0.7];
+// Seconds a seed waits above the section before coming back on its own.
+const SEED_RETURN_WAIT = [2, 9];
 
 function initFallingSeeds() {
   const layer = document.querySelector(FALLING_SEEDS_SELECTOR);
-  const elements = layer ? [...layer.querySelectorAll(FALLING_SEED_SELECTOR)] : [];
+  const originals = layer ? [...layer.querySelectorAll(FALLING_SEED_SELECTOR)] : [];
 
-  if (!elements.length) return;
+  if (!originals.length) return;
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  const standIns = originals.map((original) => {
+    const copy = original.cloneNode(true);
+    copy.setAttribute("aria-hidden", "true");
+    copy.style.opacity = "0";
+    original.after(copy);
+    return copy;
+  });
+  const elements = [...originals, ...standIns];
 
   // Stable per-seed variety from its index, so a reload looks the same.
   const pick = ([min, max], index, salt) =>
@@ -449,15 +586,23 @@ function initFallingSeeds() {
 
   const seeds = elements.map((element, index) => ({
     element,
-    fallTime: pick(SEED_FALL_TIME, index, 1),
+    standIn: index >= originals.length,
+    fallSpeed: pick(SEED_FALL_SPEED, index, 1),
     sway: pick(SEED_SWAY, index, 2),
     swayPeriod: pick(SEED_SWAY_PERIOD, index, 3),
     tilt: pick(SEED_TILT, index, 4),
     phase: pick([0, Math.PI * 2], index, 5),
-    gap: pick(SEED_RETURN_GAP, index, 6),
+    wait: pick(SEED_RETURN_WAIT, index, 6),
+    left: 0,
     top: 0,
+    width: 0,
     height: 0,
+    // Each starts falling from its place in the Webflow layout; stand-ins wait.
+    falling: index < originals.length,
+    speed: 0,
+    x: 0,
     y: 0,
+    returnAt: 0,
   }));
 
   let layerHeight = 0;
@@ -466,51 +611,87 @@ function initFallingSeeds() {
   let lastTime = 0;
   let clock = 0;
 
+  const swingOf = (seed) =>
+    Math.sin((clock / seed.swayPeriod) * Math.PI * 2 + seed.phase);
+  const marginOf = (seed) => seed.height * 0.5;
+
   // Placement comes from Webflow; read it back whenever the layout changes.
   const measure = () => {
     layerHeight = layer.clientHeight;
     seeds.forEach((seed) => {
+      seed.left = seed.element.offsetLeft;
       seed.top = seed.element.offsetTop;
+      seed.width = seed.element.offsetWidth;
       seed.height = seed.element.offsetHeight;
+      if (!seed.speed) seed.speed = seed.fallSpeed * window.innerHeight;
     });
   };
 
   const render = () => {
     seeds.forEach((seed) => {
-      const margin = seed.height * 0.5;
-      const gap = seed.gap * layerHeight;
-      // From fully above the section (plus this seed's wait) to fully below
-      // it, then round again.
-      const start = -(seed.top + seed.height + margin + gap);
-      const span = layerHeight + seed.height + margin * 2 + gap;
-      seed.y = ((((seed.y - start) % span) + span) % span) + start;
-
-      const swing = Math.sin((clock / seed.swayPeriod) * Math.PI * 2 + seed.phase);
-      const x = swing * seed.sway;
+      const swing = swingOf(seed);
+      const x = seed.x + swing * seed.sway;
       const tilt = -swing * seed.tilt;
       const enter = (seed.top + seed.y + seed.height) / (layerHeight * SEED_FADE_IN);
-      const opacity = Math.min(Math.max(enter, 0), 1);
+      const opacity = seed.falling ? Math.min(Math.max(enter, 0), 1) : 0;
 
       seed.element.style.transform = `translate3d(${x}px, ${seed.y}px, 0) rotate(${tilt}deg)`;
       seed.element.style.opacity = opacity;
     });
   };
 
+  // The join with the hero is on screen while the top of this layer is.
+  const joinInView = () => layer.getBoundingClientRect().top >= 0;
+
   const tick = (now) => {
     const dt = Math.min((now - lastTime) / 1000, 0.05);
     lastTime = now;
     clock += dt;
 
+    const handOffsOnly = joinInView();
+
     seeds.forEach((seed) => {
-      // Slower at the ends of the swing, where the tuft catches the air.
-      const swing = Math.cos((clock / seed.swayPeriod) * Math.PI * 4 + seed.phase * 2);
-      const speed = (layerHeight / seed.fallTime) * (1 + 0.3 * swing);
-      seed.y += speed * dt;
+      if (seed.falling) {
+        // Slower at the ends of the swing, where the tuft catches the air.
+        const swing = Math.cos((clock / seed.swayPeriod) * Math.PI * 4 + seed.phase * 2);
+        seed.y += seed.speed * (1 + 0.3 * swing) * dt;
+
+        // Fully below the section: wait above it for the next turn.
+        if (seed.top + seed.y > layerHeight + marginOf(seed)) {
+          seed.falling = false;
+          seed.returnAt = clock + seed.wait;
+        }
+      } else if (!seed.standIn && !handOffsOnly && clock >= seed.returnAt) {
+        // Back in from above the section, at its own place and pace.
+        seed.falling = true;
+        seed.x = 0;
+        seed.y = -(seed.top + seed.height + marginOf(seed));
+        seed.speed = seed.fallSpeed * window.innerHeight;
+      }
     });
     render();
 
     frame = visible ? requestAnimationFrame(tick) : 0;
   };
+
+  // A seed leaving the hero: the longest-waiting seed here carries it on from
+  // the same spot (centred on it) at the same speed.
+  window.addEventListener(DANDELION_SEED_FALL_EVENT, ({ detail }) => {
+    if (!visible) return;
+
+    const rect = layer.getBoundingClientRect();
+    if (detail.x < rect.left || detail.x > rect.right) return;
+
+    const seed = seeds
+      .filter((candidate) => !candidate.falling)
+      .sort((a, b) => a.returnAt - b.returnAt)[0];
+    if (!seed) return;
+
+    seed.falling = true;
+    seed.speed = detail.speed;
+    seed.x = detail.x - rect.left - seed.left - seed.width / 2 - swingOf(seed) * seed.sway;
+    seed.y = detail.y - rect.top - seed.top - seed.height / 2;
+  });
 
   // Only run while the section is on screen.
   new IntersectionObserver(([entry]) => {
