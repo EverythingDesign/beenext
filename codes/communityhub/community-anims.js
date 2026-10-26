@@ -303,6 +303,90 @@ function initCommunityHeroAnimation() {
   });
 }
 
+// Cycle the desktop collage through the same content reveal as a hover.
+// Actual hover or keyboard focus takes priority; smaller screens keep the
+// stacked cards and their existing always-visible content.
+function initMomentsHoverLoop() {
+  const collage = document.querySelector("#main .moments-collage");
+  if (!collage) return;
+
+  const cards = ["is-kunal", "is-prashant", "is-sreevathsa", "is-priya"].map(
+    (name) => collage.querySelector(`.moments-card.${name}`),
+  );
+  if (cards.some((card) => !card)) return;
+
+  const desktop = window.matchMedia("(min-width: 992px) and (hover: hover)");
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const activeClass = "is-auto-active";
+  const intervalMs = 2000;
+  let inView = false;
+  let timer = 0;
+  let current = 0;
+
+  // The Webflow page already transitions these layers on hover. The class
+  // follows the same opacity rules without changing the manual hover styles.
+  const style = document.createElement("style");
+  style.textContent = `
+    @media screen and (min-width: 992px) and (hover: hover) {
+      #main .moments-collage .moments-card.${activeClass} .moments-card_media,
+      #main .moments-collage .moments-card.${activeClass} .moments-card_name {
+        opacity: 0;
+      }
+      #main .moments-collage .moments-card.${activeClass} .moments-card_hover {
+        opacity: 1;
+      }
+    }
+  `;
+  document.head.appendChild(style);
+
+  const clearActive = () => cards.forEach((card) => card.classList.remove(activeClass));
+  const pause = () => {
+    window.clearInterval(timer);
+    timer = 0;
+    clearActive();
+  };
+  const interacting = () =>
+    cards.some((card) => card.matches(":hover") || card.contains(document.activeElement));
+  const canRun = () =>
+    desktop.matches && reducedMotion.matches === false && inView &&
+    !document.hidden && !interacting();
+
+  const show = (index) => {
+    cards.forEach((card, cardIndex) => {
+      card.classList.toggle(activeClass, cardIndex === index);
+    });
+  };
+  const update = () => {
+    pause();
+    if (!canRun()) return;
+
+    current = 0;
+    show(current);
+    timer = window.setInterval(() => {
+      if (!canRun()) {
+        pause();
+        return;
+      }
+      current = (current + 1) % cards.length;
+      show(current);
+    }, intervalMs);
+  };
+
+  cards.forEach((card) => {
+    card.addEventListener("pointerenter", pause);
+    card.addEventListener("pointerleave", update);
+    card.addEventListener("focusin", pause);
+    card.addEventListener("focusout", () => window.setTimeout(update, 0));
+  });
+  desktop.addEventListener("change", update);
+  reducedMotion.addEventListener("change", update);
+  document.addEventListener("visibilitychange", update);
+  new IntersectionObserver(([entry]) => {
+    inView = entry.isIntersecting;
+    update();
+  }, { threshold: 0.25 }).observe(collage);
+}
+
 // Community Moments marquee
 //
 // The CMS list drifts left on its own and can be dragged or flicked either
@@ -781,6 +865,7 @@ document.addEventListener("DOMContentLoaded", () => {
   window.BNScroll?.lock?.();
 
   initMomentsMarquee();
+  initMomentsHoverLoop();
   initFallingSeeds();
 
   document.fonts.ready.then(() => {
