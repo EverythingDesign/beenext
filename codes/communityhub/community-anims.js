@@ -542,12 +542,14 @@ function initMomentsMarquee() {
 //
 // While the join between the two sections is on screen, a seed only comes in
 // when the hero's Dandelion hands one off (`dandelion:seedfall`): a waiting
-// seed takes over at the same spot and speed, fading in as the hero's fades
-// out. Further down, with the join scrolled away, seeds come back in from
+// seed takes over at the same spot and speed, at the hero seed's size and
+// tilt, and fades in as the hero's fades out, then eases into its own size and
+// swing. Further down, with the join scrolled away, seeds come back in from
 // above on their own. Each starts from where it sits in Webflow. The hero lets
 // seeds go faster than six can fall through, so each seed is copied once as a
-// stand-in that only ever carries on a seed from the hero. Only transforms and
-// opacity are animated; size and placement stay in Webflow.
+// stand-in that only ever carries on a seed from the hero. A mouse parts the
+// seeds around it like a breath of air. Only transforms and opacity are
+// animated; size and placement stay in Webflow.
 
 const FALLING_SEEDS_SELECTOR = "[data-falling-seeds]";
 const FALLING_SEED_SELECTOR = ".falling-seed";
@@ -559,10 +561,19 @@ const SEED_SWAY = [16, 34];
 const SEED_SWAY_PERIOD = [4.5, 7];
 // Tilt, in degrees each way, at the ends of the swing.
 const SEED_TILT = [8, 16];
-// Fraction of the layer height over which an entering seed fades in.
+// Fraction of the layer height over which a seed coming in on its own fades in.
 const SEED_FADE_IN = 0.12;
 // Seconds a seed waits above the section before coming back on its own.
 const SEED_RETURN_WAIT = [2, 9];
+// Seconds a handed-off seed takes to fade in, and to ease from the hero seed's
+// size and tilt into its own.
+const SEED_HANDOFF_FADE = 2.5;
+const SEED_HANDOFF_SETTLE = 3.5;
+// How far, in px, the mouse pushes a seed at its centre, how wide the push
+// reaches, and how many seconds a seed takes to follow it.
+const SEED_PUSH = 70;
+const SEED_PUSH_RADIUS = 140;
+const SEED_PUSH_EASE = 0.25;
 
 function initFallingSeeds() {
   const layer = document.querySelector(FALLING_SEEDS_SELECTOR);
@@ -603,6 +614,12 @@ function initFallingSeeds() {
     x: 0,
     y: 0,
     returnAt: 0,
+    // Set while carrying on a seed from the hero.
+    handedAt: null,
+    handedAngle: 0,
+    handedScale: 1,
+    pushX: 0,
+    pushY: 0,
   }));
 
   let layerHeight = 0;
@@ -610,10 +627,13 @@ function initFallingSeeds() {
   let frame = 0;
   let lastTime = 0;
   let clock = 0;
+  let pointer = null;
 
   const swingOf = (seed) =>
     Math.sin((clock / seed.swayPeriod) * Math.PI * 2 + seed.phase);
   const marginOf = (seed) => seed.height * 0.5;
+  const easeOut = (t) => 1 - (1 - t) ** 3;
+  const clamp01 = (value) => Math.min(Math.max(value, 0), 1);
 
   // Placement comes from Webflow; read it back whenever the layout changes.
   const measure = () => {
@@ -630,25 +650,39 @@ function initFallingSeeds() {
   const render = () => {
     seeds.forEach((seed) => {
       const swing = swingOf(seed);
-      const x = seed.x + swing * seed.sway;
-      const tilt = -swing * seed.tilt;
-      const enter = (seed.top + seed.y + seed.height) / (layerHeight * SEED_FADE_IN);
-      const opacity = seed.falling ? Math.min(Math.max(enter, 0), 1) : 0;
+      const x = seed.x + swing * seed.sway + seed.pushX;
+      const y = seed.y + seed.pushY;
+      let tilt = -swing * seed.tilt + seed.pushX * 0.12;
+      let scale = 1;
+      let opacity = 0;
 
-      seed.element.style.transform = `translate3d(${x}px, ${seed.y}px, 0) rotate(${tilt}deg)`;
+      if (seed.falling && seed.handedAt !== null) {
+        const since = clock - seed.handedAt;
+        const settle = easeOut(clamp01(since / SEED_HANDOFF_SETTLE));
+        tilt += seed.handedAngle * (1 - settle);
+        scale = seed.handedScale + (1 - seed.handedScale) * settle;
+        opacity = clamp01(since / SEED_HANDOFF_FADE);
+      } else if (seed.falling) {
+        opacity = clamp01((seed.top + seed.y + seed.height) / (layerHeight * SEED_FADE_IN));
+      }
+
+      seed.element.style.transform = `translate3d(${x}px, ${y}px, 0) rotate(${tilt}deg) scale(${scale})`;
       seed.element.style.opacity = opacity;
     });
   };
 
-  // The join with the hero is on screen while the top of this layer is.
-  const joinInView = () => layer.getBoundingClientRect().top >= 0;
+  // Where the section itself starts; the layer reaches up into the hero.
+  const joinTop = () => layer.getBoundingClientRect().top - layer.offsetTop;
 
   const tick = (now) => {
     const dt = Math.min((now - lastTime) / 1000, 0.05);
     lastTime = now;
     clock += dt;
 
-    const handOffsOnly = joinInView();
+    // With the join on screen, only seeds from the hero come in.
+    const handOffsOnly = joinTop() >= 0;
+    const rect = pointer ? layer.getBoundingClientRect() : null;
+    const follow = 1 - Math.exp(-dt / SEED_PUSH_EASE);
 
     seeds.forEach((seed) => {
       if (seed.falling) {
@@ -659,15 +693,33 @@ function initFallingSeeds() {
         // Fully below the section: wait above it for the next turn.
         if (seed.top + seed.y > layerHeight + marginOf(seed)) {
           seed.falling = false;
+          seed.handedAt = null;
           seed.returnAt = clock + seed.wait;
         }
       } else if (!seed.standIn && !handOffsOnly && clock >= seed.returnAt) {
         // Back in from above the section, at its own place and pace.
         seed.falling = true;
+        seed.handedAt = null;
         seed.x = 0;
         seed.y = -(seed.top + seed.height + marginOf(seed));
         seed.speed = seed.fallSpeed * window.innerHeight;
       }
+
+      // The mouse pushes a seed away from it, strongest close up.
+      let pushX = 0;
+      let pushY = 0;
+      if (rect && seed.falling) {
+        const centreX = rect.left + seed.left + seed.width / 2 + seed.x + swingOf(seed) * seed.sway;
+        const centreY = rect.top + seed.top + seed.height / 2 + seed.y;
+        const dx = centreX - pointer.x;
+        const dy = centreY - pointer.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        const strength = SEED_PUSH * Math.exp(-((distance / SEED_PUSH_RADIUS) ** 2));
+        pushX = (dx / distance) * strength;
+        pushY = (dy / distance) * strength;
+      }
+      seed.pushX += (pushX - seed.pushX) * follow;
+      seed.pushY += (pushY - seed.pushY) * follow;
     });
     render();
 
@@ -675,7 +727,7 @@ function initFallingSeeds() {
   };
 
   // A seed leaving the hero: the longest-waiting seed here carries it on from
-  // the same spot (centred on it) at the same speed.
+  // the same spot (centred on it), at the same speed, size and tilt.
   window.addEventListener(DANDELION_SEED_FALL_EVENT, ({ detail }) => {
     if (!visible) return;
 
@@ -687,10 +739,32 @@ function initFallingSeeds() {
       .sort((a, b) => a.returnAt - b.returnAt)[0];
     if (!seed) return;
 
+    const swing = swingOf(seed);
     seed.falling = true;
     seed.speed = detail.speed;
-    seed.x = detail.x - rect.left - seed.left - seed.width / 2 - swingOf(seed) * seed.sway;
+    seed.x = detail.x - rect.left - seed.left - seed.width / 2 - swing * seed.sway;
     seed.y = detail.y - rect.top - seed.top - seed.height / 2;
+    seed.handedAt = clock;
+    // The hero seed's tilt, less this seed's own swing, the short way round.
+    seed.handedAngle = ((((detail.angle + swing * seed.tilt + 180) % 360) + 360) % 360) - 180;
+    seed.handedScale = Math.min(Math.max(detail.length / seed.height, 0.5), 3);
+    seed.pushX = 0;
+    seed.pushY = 0;
+  });
+
+  // Only a real mouse pushes seeds; touch scrolling never does.
+  const finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
+  window.addEventListener(
+    "pointermove",
+    (event) => {
+      pointer = event.pointerType === "mouse" && finePointer.matches
+        ? { x: event.clientX, y: event.clientY }
+        : null;
+    },
+    { passive: true },
+  );
+  document.documentElement.addEventListener("pointerleave", () => {
+    pointer = null;
   });
 
   // Only run while the section is on screen.
