@@ -299,6 +299,7 @@ function initMomentsMarquee() {
   let velocity = cruise;
   let dragging = false;
   let visible = true;
+  let frame = 0;
   let lastTime = performance.now();
   let pointerId = null;
   let pointerX = 0;
@@ -335,13 +336,14 @@ function initMomentsMarquee() {
     const dt = Math.min((now - lastTime) / 1000, 0.05);
     lastTime = now;
 
-    if (!dragging && visible && loopWidth) {
+    if (!dragging && loopWidth) {
       velocity += (cruise - velocity) * (1 - Math.exp(-dt / MARQUEE_SETTLE));
       x = wrap(x + velocity * dt);
       render();
     }
 
-    requestAnimationFrame(tick);
+    // Off screen the loop stops entirely; the observer below restarts it.
+    frame = visible ? requestAnimationFrame(tick) : 0;
   };
 
   marquee.addEventListener("pointerdown", (event) => {
@@ -387,7 +389,10 @@ function initMomentsMarquee() {
   // Only run while the marquee is on screen.
   new IntersectionObserver(([entry]) => {
     visible = entry.isIntersecting;
-    lastTime = performance.now();
+    if (visible && !frame) {
+      lastTime = performance.now();
+      frame = requestAnimationFrame(tick);
+    }
   }).observe(marquee);
 
   // Tile sizes change across breakpoints, so the loop is rebuilt on resize.
@@ -403,7 +408,126 @@ function initMomentsMarquee() {
 
   build();
   render();
-  requestAnimationFrame(tick);
+  frame = requestAnimationFrame(tick);
+}
+
+// Falling seeds (#about-community)
+//
+// The seeds placed in the section's background layer drift down through it,
+// the way a dandelion seed does: slowly, hanging under its tuft, swinging from
+// side to side and tilting with each swing, a little slower at the ends of the
+// swing. Each starts from where it sits in Webflow and, once below the section,
+// comes back in from above, fading in as it enters. Every seed has its own
+// pace, so they never move in step. Only transforms and opacity are animated;
+// size and placement stay in Webflow.
+
+const FALLING_SEEDS_SELECTOR = "[data-falling-seeds]";
+const FALLING_SEED_SELECTOR = ".falling-seed";
+// Seconds for a seed to fall through the section, slowest and fastest.
+const SEED_FALL_TIME = [18, 28];
+// Side-to-side swing: px each way, and seconds per full swing.
+const SEED_SWAY = [16, 34];
+const SEED_SWAY_PERIOD = [4.5, 7];
+// Tilt, in degrees each way, at the ends of the swing.
+const SEED_TILT = [8, 16];
+// Fraction of the section height over which an entering seed fades in.
+const SEED_FADE_IN = 0.12;
+// Extra wait above the section before a seed comes back, as a fraction of its
+// height. It differs per seed, so seeds that leave together return apart.
+const SEED_RETURN_GAP = [0.05, 0.7];
+
+function initFallingSeeds() {
+  const layer = document.querySelector(FALLING_SEEDS_SELECTOR);
+  const elements = layer ? [...layer.querySelectorAll(FALLING_SEED_SELECTOR)] : [];
+
+  if (!elements.length) return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  // Stable per-seed variety from its index, so a reload looks the same.
+  const pick = ([min, max], index, salt) =>
+    min + (max - min) * ((Math.sin(index * 12.9898 + salt * 78.233) * 43758.5453) % 1 + 1) % 1;
+
+  const seeds = elements.map((element, index) => ({
+    element,
+    fallTime: pick(SEED_FALL_TIME, index, 1),
+    sway: pick(SEED_SWAY, index, 2),
+    swayPeriod: pick(SEED_SWAY_PERIOD, index, 3),
+    tilt: pick(SEED_TILT, index, 4),
+    phase: pick([0, Math.PI * 2], index, 5),
+    gap: pick(SEED_RETURN_GAP, index, 6),
+    top: 0,
+    height: 0,
+    y: 0,
+  }));
+
+  let layerHeight = 0;
+  let visible = false;
+  let frame = 0;
+  let lastTime = 0;
+  let clock = 0;
+
+  // Placement comes from Webflow; read it back whenever the layout changes.
+  const measure = () => {
+    layerHeight = layer.clientHeight;
+    seeds.forEach((seed) => {
+      seed.top = seed.element.offsetTop;
+      seed.height = seed.element.offsetHeight;
+    });
+  };
+
+  const render = () => {
+    seeds.forEach((seed) => {
+      const margin = seed.height * 0.5;
+      const gap = seed.gap * layerHeight;
+      // From fully above the section (plus this seed's wait) to fully below
+      // it, then round again.
+      const start = -(seed.top + seed.height + margin + gap);
+      const span = layerHeight + seed.height + margin * 2 + gap;
+      seed.y = ((((seed.y - start) % span) + span) % span) + start;
+
+      const swing = Math.sin((clock / seed.swayPeriod) * Math.PI * 2 + seed.phase);
+      const x = swing * seed.sway;
+      const tilt = -swing * seed.tilt;
+      const enter = (seed.top + seed.y + seed.height) / (layerHeight * SEED_FADE_IN);
+      const opacity = Math.min(Math.max(enter, 0), 1);
+
+      seed.element.style.transform = `translate3d(${x}px, ${seed.y}px, 0) rotate(${tilt}deg)`;
+      seed.element.style.opacity = opacity;
+    });
+  };
+
+  const tick = (now) => {
+    const dt = Math.min((now - lastTime) / 1000, 0.05);
+    lastTime = now;
+    clock += dt;
+
+    seeds.forEach((seed) => {
+      // Slower at the ends of the swing, where the tuft catches the air.
+      const swing = Math.cos((clock / seed.swayPeriod) * Math.PI * 4 + seed.phase * 2);
+      const speed = (layerHeight / seed.fallTime) * (1 + 0.3 * swing);
+      seed.y += speed * dt;
+    });
+    render();
+
+    frame = visible ? requestAnimationFrame(tick) : 0;
+  };
+
+  // Only run while the section is on screen.
+  new IntersectionObserver(([entry]) => {
+    visible = entry.isIntersecting;
+    if (visible && !frame) {
+      lastTime = performance.now();
+      frame = requestAnimationFrame(tick);
+    }
+  }).observe(layer);
+
+  new ResizeObserver(() => {
+    measure();
+    render();
+  }).observe(layer);
+
+  measure();
+  render();
 }
 
 // Hold the page still while the preloader is up, as the homepage does.
@@ -413,6 +537,7 @@ document.addEventListener("DOMContentLoaded", () => {
   window.BNScroll?.lock?.();
 
   initMomentsMarquee();
+  initFallingSeeds();
 
   document.fonts.ready.then(() => {
     initCommunityHeroAnimation();
