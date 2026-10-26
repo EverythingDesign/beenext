@@ -280,6 +280,12 @@ const MARQUEE_LIST_SELECTOR = ".moments_list";
 const MARQUEE_SPEED = 40;
 // Seconds for a flick to settle back into the drift.
 const MARQUEE_SETTLE = 0.8;
+// Fastest flick, in viewport widths per second. A flick coasts about
+// MARQUEE_SETTLE times its speed, so this caps the coast at under two screens.
+const MARQUEE_MAX_FLICK = 2;
+// Movement in this many ms before release sets the flick speed; a finger held
+// still for longer than this lets go without a flick.
+const MARQUEE_FLICK_WINDOW_MS = 100;
 
 // Each CMS item is one event, and its photos come from the Event Images field
 // through a Collection List nested inside the item. Every photo becomes its own
@@ -478,27 +484,49 @@ function initMomentsMarquee() {
     pointerX = event.clientX;
     render();
 
-    // Keep the last 100ms of movement to read the flick speed on release.
+    // Keep the recent movement to read the flick speed on release.
     dragSamples.push({ x: event.clientX, t: event.timeStamp });
-    while (dragSamples.length > 2 && event.timeStamp - dragSamples[0].t > 100) {
+    while (
+      dragSamples.length > 2 &&
+      event.timeStamp - dragSamples[0].t > MARQUEE_FLICK_WINDOW_MS
+    ) {
       dragSamples.shift();
     }
   });
 
-  const release = (event) => {
+  // The flick speed comes from the drag samples only, never the release
+  // event's own position, and is capped so a short, sharp swipe cannot send
+  // the strip several screens.
+  const flickVelocity = (releaseTime) => {
+    const last = dragSamples[dragSamples.length - 1];
+    if (releaseTime - last.t > MARQUEE_FLICK_WINDOW_MS) return 0;
+
+    const recent = dragSamples.filter(
+      (sample) => releaseTime - sample.t <= MARQUEE_FLICK_WINDOW_MS,
+    );
+    const first = recent.length > 1 ? recent[0] : dragSamples[0];
+    const elapsed = (last.t - first.t) / 1000;
+    if (elapsed <= 0) return 0;
+
+    const max = window.innerWidth * MARQUEE_MAX_FLICK;
+    return Math.max(-max, Math.min(max, (last.x - first.x) / elapsed));
+  };
+
+  const endDrag = (event, flick) => {
     if (!dragging || event.pointerId !== pointerId) return;
 
     dragging = false;
     marquee.classList.remove("is-dragging");
-
-    const first = dragSamples[0];
-    const elapsed = (event.timeStamp - first.t) / 1000;
-    velocity = elapsed > 0 ? (event.clientX - first.x) / elapsed : cruise;
+    // From rest, the strip eases back into the drift.
+    velocity = flick ? flickVelocity(event.timeStamp) : 0;
     lastTime = performance.now();
   };
 
-  marquee.addEventListener("pointerup", release);
-  marquee.addEventListener("pointercancel", release);
+  marquee.addEventListener("pointerup", (event) => endDrag(event, true));
+  // On touch, a swipe that turns vertical is handed to the page scroll and the
+  // pointer is cancelled. Some browsers report the cancel at 0,0, so it must
+  // not count as a flick.
+  marquee.addEventListener("pointercancel", (event) => endDrag(event, false));
 
   // Only run while the marquee is on screen.
   new IntersectionObserver(([entry]) => {
