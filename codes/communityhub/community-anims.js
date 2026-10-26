@@ -102,6 +102,8 @@ const SWAP_DURATION = 0.9;
 // Scoped to #main: the page also keeps a hidden style holder with the
 // .community-hero-heading class outside it.
 const TITLE_SELECTOR = "#main .community-hero-h1 h1";
+// "Ichigo ichi" moves up to the top of this container as the paragraph appears.
+const HERO_CONTAINER_SELECTOR = "#main .community-hero-container";
 const KANJI_SELECTOR = "#main .community-hero-heading";
 const SUBHERO_SELECTOR = "#main .community-subhero";
 const PARA_SELECTOR = "#main .community-para";
@@ -129,9 +131,12 @@ function riseDuration(chars) {
 
 // On the first scroll, "一期一会" and the subhero give way to the paragraph,
 // like the homepage hero's second fold. Scrolling back reverses it.
-function initHeroSwap({ gsap, kanjiChars, subhero, prefersReducedMotion }) {
+function initHeroSwap({ gsap, title, kanjiChars, subhero, prefersReducedMotion }) {
   const para = document.querySelector(PARA_SELECTOR);
   const trigger = document.querySelector(HERO_TRIGGER_SELECTOR);
+  const container = document.querySelector(HERO_CONTAINER_SELECTOR);
+  // The heading's wrapper moves, so its letters keep their own rise tween.
+  const titleBlock = title?.parentElement;
 
   if (!para || !trigger) return;
 
@@ -174,11 +179,41 @@ function initHeroSwap({ gsap, kanjiChars, subhero, prefersReducedMotion }) {
     "-=0.4",
   );
 
+  // "Ichigo ichi" rises to the top-left of the container. The distance is
+  // measured from where the heading sits in the layout (less any move already
+  // applied), and re-measured whenever ScrollTrigger refreshes on resize.
+  let titleTween = null;
+  if (titleBlock && container) {
+    const riseToTop = () => {
+      const top = container.getBoundingClientRect().top + parseFloat(getComputedStyle(container).paddingTop);
+      const current = gsap.getProperty(titleBlock, "y");
+      return top - (titleBlock.getBoundingClientRect().top - current);
+    };
+
+    titleTween = gsap.fromTo(
+      titleBlock,
+      { y: 0 },
+      {
+        y: riseToTop,
+        duration: prefersReducedMotion ? 0.3 : SWAP_DURATION * 1.1,
+        ease: SOFT_EASE,
+        immediateRender: false,
+      },
+    );
+    swapTl.add(titleTween, 0);
+  }
+
   window.ScrollTrigger.create({
     trigger,
     start: HERO_TRIGGER_START,
     onEnter: () => swapTl.play(),
     onLeaveBack: () => swapTl.reverse(),
+  });
+
+  window.ScrollTrigger.addEventListener("refresh", () => {
+    if (!titleTween) return;
+    titleTween.invalidate();
+    swapTl.progress(swapTl.progress());
   });
 }
 
@@ -227,7 +262,7 @@ function initCommunityHeroAnimation() {
   // characters at once. If the visitor has already scrolled past the trigger,
   // ScrollTrigger plays the swap straight away.
   const armHeroSwap = () =>
-    initHeroSwap({ gsap, kanjiChars, subhero, prefersReducedMotion });
+    initHeroSwap({ gsap, title, kanjiChars, subhero, prefersReducedMotion });
 
   onDandelionGrow(() => {
     unlockScroll();
