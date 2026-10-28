@@ -1,9 +1,9 @@
-// Quote circle shared by the Founder Voices and Innovation heroes.
+// Quote circle shared by the Founder Voices, Innovation, and Impact heroes.
 // Each visible polygon has one quote. The progress arc reaches the polygons
 // in clockwise order, using their positions on the ring rather than assuming
 // that every page has four equally spaced points.
 
-const HERO_CIRCLE_SELECTOR = "#fv-hero .fv-hero-circle";
+const HERO_CIRCLE_SELECTOR = ".fv-hero-section .fv-hero-circle";
 const HERO_QUOTE_SELECTOR = ".fv-hero-quote";
 const HERO_QUOTE_AUTHOR_SELECTOR = ".fv-hero-quote-text + *";
 const HERO_POINT_SELECTORS = [
