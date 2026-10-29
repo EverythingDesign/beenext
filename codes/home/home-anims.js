@@ -1313,12 +1313,79 @@ function initBeeNetworkAnimation() {
     path.setAttribute("mask", `url(#${maskId})`);
 
     const length = revealPath.getTotalLength();
-    gsap.set(revealPath, {
-      strokeDasharray: length,
-      strokeDashoffset: length,
-    });
+    const lineReveal = { path, revealPath, length, visibleLength: length };
 
-    return { revealPath, length };
+    setLineVisibleLength(lineReveal, length);
+    gsap.set(revealPath, { strokeDashoffset: length });
+
+    return lineReveal;
+  }
+
+  // Only the first visibleLength of the line is drawn. With a dash of that
+  // length followed by a gap of the full length, dashoffset visibleLength hides
+  // the line and 0 shows it.
+  function setLineVisibleLength(lineReveal, visibleLength) {
+    lineReveal.visibleLength = visibleLength;
+    gsap.set(lineReveal.revealPath, {
+      strokeDasharray: `${visibleLength} ${lineReveal.length}`,
+    });
+  }
+
+  // The connector drawn in Webflow runs on under the second card. Measure, with
+  // both cards in their open position, how far along the line it first reaches
+  // that card so the line can end at the card's edge.
+  function lengthToConnectedCard(item) {
+    const { path, length } = item.lineReveal;
+    const card =
+      item.connectedContent.querySelector(".network_content_inner") ||
+      item.connectedContent;
+
+    const outerScale = gsap.getProperty(item.contentOuter, "scale");
+    const connectedX = gsap.getProperty(item.connectedContent, "x");
+    gsap.set(item.contentOuter, { scale: 1 });
+    gsap.set(item.connectedContent, { x: 0 });
+
+    const cardBox = card.getBoundingClientRect();
+    const toScreen = path.getScreenCTM();
+    const isInsideCard = (distance) => {
+      const { x, y } = path.getPointAtLength(distance);
+      const point = new DOMPoint(x, y).matrixTransform(toScreen);
+
+      return (
+        point.x >= cardBox.left &&
+        point.x <= cardBox.right &&
+        point.y >= cardBox.top &&
+        point.y <= cardBox.bottom
+      );
+    };
+
+    let visibleLength = length;
+
+    if (toScreen && cardBox.width && cardBox.height) {
+      const step = 2;
+
+      for (let distance = 0; distance <= length; distance += step) {
+        if (!isInsideCard(distance)) continue;
+
+        // Narrow down the exact crossing within the last step.
+        let outside = Math.max(0, distance - step);
+        let inside = distance;
+
+        while (inside - outside > 0.25) {
+          const middle = (outside + inside) / 2;
+          if (isInsideCard(middle)) inside = middle;
+          else outside = middle;
+        }
+
+        visibleLength = outside;
+        break;
+      }
+    }
+
+    gsap.set(item.contentOuter, { scale: outerScale });
+    gsap.set(item.connectedContent, { x: connectedX });
+
+    return visibleLength;
   }
 
   const items = buttons
@@ -1398,7 +1465,7 @@ function initBeeNetworkAnimation() {
 
     if (item.lineReveal) {
       gsap.set(item.lineReveal.revealPath, {
-        strokeDashoffset: item.lineReveal.length,
+        strokeDashoffset: item.lineReveal.visibleLength,
       });
     }
   }
@@ -1440,6 +1507,15 @@ function initBeeNetworkAnimation() {
 
       item.wrapper.classList.add("is-active");
       item.button.setAttribute("aria-expanded", "true");
+
+      if (item.lineReveal) {
+        const visibleLength = lengthToConnectedCard(item);
+
+        setLineVisibleLength(item.lineReveal, visibleLength);
+        gsap.set(item.lineReveal.revealPath, {
+          strokeDashoffset: visibleLength,
+        });
+      }
 
       if (prefersReducedMotion) {
         gsap.set(item.contentOuter, { autoAlpha: 1, scale: 1 });
