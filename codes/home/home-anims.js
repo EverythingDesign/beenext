@@ -1816,24 +1816,7 @@ function initCommunityAnimation() {
   }
 
   media.add("(min-width: 768px)", () => {
-    const scrollToCommunityTarget = (target, offset = 0) => {
-      const targetElement =
-        typeof target === "string" ? document.querySelector(target) : target;
-
-      if (!targetElement) return;
-
-      let targetTop = 0;
-      let offsetElement = targetElement;
-
-      // offsetTop preserves the element's original layout position even when
-      // the target is currently stuck with position: sticky.
-      while (offsetElement) {
-        targetTop += offsetElement.offsetTop;
-        offsetElement = offsetElement.offsetParent;
-      }
-
-      const destination = targetTop + offset;
-
+    const scrollToCommunityPosition = (destination) => {
       if (window.lenis?.scrollTo) {
         window.lenis.scrollTo(destination, {
           duration: 0.8,
@@ -1849,12 +1832,22 @@ function initCommunityAnimation() {
       });
     };
 
+    // Scroll just past the switch's own start / end, as measured by its
+    // ScrollTrigger, so the switch always completes. Positions worked out from
+    // the layout can miss it when content above has changed height since the
+    // last ScrollTrigger refresh.
+    const SWITCH_OVERSHOOT = 4;
+
     const handleBeeTogetherClick = () => {
-      scrollToCommunityTarget(trigger, -window.innerHeight * 0.8);
+      scrollToCommunityPosition(
+        communityTimeline.scrollTrigger.end + SWITCH_OVERSHOOT,
+      );
     };
 
     const handleBeeCampClick = () => {
-      scrollToCommunityTarget(trigger, -window.innerHeight);
+      scrollToCommunityPosition(
+        communityTimeline.scrollTrigger.start - SWITCH_OVERSHOOT,
+      );
     };
 
     beeTogetherButton.addEventListener("click", handleBeeTogetherClick);
