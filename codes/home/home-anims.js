@@ -255,65 +255,30 @@ function initBeliefSystemTextAnimation() {
     };
   });
 
+  // Mobile / tablet: the first card is open from the start and each card
+  // simply fades in as it comes into view.
   beliefMedia.add("(max-width: 991px)", () => {
     gsap.set(beliefHeading, { opacity: 1 });
+    setRememberedBeliefCardActive(true);
 
-    const beliefCardTimeline = gsap.timeline({
-      paused: true,
-      onComplete: () => setRememberedBeliefCardActive(true),
-      onReverseComplete: () => setRememberedBeliefCardActive(false),
-    });
-
-    beliefCardTimeline
-      .to(beliefCards, {
-        opacity: 1,
-        stagger: 0.2,
-        duration: 0.5,
-        ease: "none",
-      });
-
-    let beliefCardDirection = 1;
-    const playBeliefCards = () => beliefCardTimeline.timeScale(1).play();
-    const reverseBeliefCards = () =>
-      beliefCardTimeline.timeScale(1.5).reverse();
-
-    const beliefCardTrigger = ScrollTrigger.create({
-      trigger: ".belief-system-section",
-      start: "top center",
-      end: "top top",
-      onLeave: playBeliefCards,
-      onEnterBack: reverseBeliefCards,
-      onUpdate: (self) => {
-        if (self.direction === beliefCardDirection) return;
-
-        beliefCardDirection = self.direction;
-
-        if (self.direction < 0 && beliefCardTimeline.progress() > 0) {
-          reverseBeliefCards();
-        } else if (
-          self.direction > 0 &&
-          beliefCardTimeline.progress() > 0
-        ) {
-          playBeliefCards();
-        }
-      },
-      onLeaveBack: reverseBeliefCards,
-    });
-
-    const syncFrame = requestAnimationFrame(() => {
-      if (beliefCardTrigger.progress === 1) {
-        beliefCardTimeline.progress(1, true);
-        setRememberedBeliefCardActive(true);
-      } else {
-        beliefCardTimeline.pause(0, true);
-        setRememberedBeliefCardActive(false);
-      }
-    });
+    const beliefCardTriggers = beliefCards.map((card) =>
+      ScrollTrigger.create({
+        trigger: card,
+        start: "top 90%",
+        once: true,
+        onEnter: () =>
+          gsap.to(card, {
+            opacity: 1,
+            duration: 0.6,
+            ease: "power2.out",
+          }),
+      }),
+    );
 
     return () => {
-      cancelAnimationFrame(syncFrame);
-      beliefCardTrigger.kill();
-      beliefCardTimeline.kill();
+      beliefCardTriggers.forEach((cardTrigger) => cardTrigger.kill());
+      gsap.killTweensOf(beliefCards);
+      gsap.set(beliefCards, { clearProps: "opacity" });
       setRememberedBeliefCardActive(false);
     };
   });
