@@ -1542,6 +1542,37 @@ function initBeeNetworkAnimation() {
 
 function initCommunityAnimation() {
   const isMobile = window.matchMedia("(max-width: 991px)").matches;
+  const beeCampContent = document.querySelector(
+    ".bee-community-content [bee-camp]",
+  );
+  const beeTogetherContent = document.querySelector(
+    ".bee-community-content [bee-together]",
+  );
+
+  // Both descriptions sit in the same spot; only the active community's is visible.
+  function showCommunityContent(isBeeTogether, immediate = false) {
+    [
+      [beeCampContent, !isBeeTogether],
+      [beeTogetherContent, isBeeTogether],
+    ].forEach(([content, isActive]) => {
+      if (!content) return;
+
+      content.setAttribute("aria-hidden", String(!isActive));
+
+      if (window.gsap) {
+        window.gsap.to(content, {
+          opacity: isActive ? 1 : 0,
+          duration: immediate ? 0 : 0.6,
+          ease: "power2.out",
+          overwrite: true,
+        });
+      } else {
+        content.style.opacity = isActive ? "1" : "0";
+      }
+    });
+  }
+
+  showCommunityContent(false, true);
 
   if (isMobile) {
     const communitySlider = document.querySelector(".community-grid.swiper");
@@ -1735,6 +1766,12 @@ function initCommunityAnimation() {
     communitySwiper.on("slideChange", syncNestedAutoplay);
     syncNestedAutoplay();
 
+    communitySwiper.on("slideChange", () => {
+      const activeSlide = communitySwiper.slides[communitySwiper.activeIndex];
+
+      showCommunityContent(activeSlide?.classList.contains("is-2"));
+    });
+
     return;
   }
 
@@ -1775,6 +1812,7 @@ function initCommunityAnimation() {
       "is-active",
       activeButton === beeTogetherButton,
     );
+    showCommunityContent(activeButton === beeTogetherButton);
   }
 
   media.add("(min-width: 768px)", () => {
