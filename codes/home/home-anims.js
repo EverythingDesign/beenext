@@ -2437,13 +2437,219 @@ function initPortfolioSwiper() {
   });
 }
 
+// Founder stories: no height shift when a story opens or switches. Every story
+// opens to one shared height (the tallest story's content), capped so an open
+// story never gets taller than the screen, and the list keeps its one-open
+// height from the start. Returns a function that holds the list's height
+// during a switch.
+function initFounderStoriesHeight(list) {
+  if (!document.getElementById("founder-stories-height-style")) {
+    const style = document.createElement("style");
+    style.id = "founder-stories-height-style";
+    style.textContent = `
+      .founders-stories-list {
+        min-height: var(--story-open-h, 0px);
+      }
+      .founders-stories-item .story_dd_inner {
+        min-height: var(--story-dd-h, 0px);
+        max-height: var(--story-dd-h, none);
+      }
+      /* Read more sits at the bottom of the story; its top spacing becomes padding */
+      .founders-stories-item .story_dd_inner > .u-button-wrapper {
+        margin-top: auto;
+        padding-top: var(--_spacing---space--8);
+      }
+      /* Short screens: tighter spacing so the content fits the capped height */
+      .founders-stories-list.is-compact .story_dd_inner {
+        padding-top: var(--_spacing---space--4);
+        row-gap: var(--_spacing---space--4);
+      }
+      .founders-stories-list.is-compact .story_dd_inner > .u-button-wrapper {
+        padding-top: var(--_spacing---space--4);
+      }
+      /* Last resort when even that doesn't fit: cut off the quote, not Read more */
+      .founders-stories-list.is-capped .story_dd_para {
+        min-height: 0;
+        overflow: hidden;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  const screenMargin = 32; // free space kept around an open story, in px
+
+  // 100svh doesn't change when a phone's address bar shows or hides.
+  const screenProbe = document.createElement("div");
+  screenProbe.setAttribute("aria-hidden", "true");
+  screenProbe.style.cssText =
+    "position:fixed;top:0;left:0;width:0;height:100svh;visibility:hidden;pointer-events:none";
+  document.body.appendChild(screenProbe);
+
+  const tallestContent = () =>
+    Math.max(
+      ...Array.from(list.querySelectorAll(".story_dd_inner")).map(
+        (inner) => inner.scrollHeight,
+      ),
+    );
+
+  // Height an open story adds around its content (header and padding),
+  // measured on a hidden copy.
+  function openStoryChrome() {
+    const story = list.querySelector(".founders-stories-item");
+    const copy = story.cloneNode(true);
+
+    copy.classList.add("is-active");
+    copy.setAttribute("aria-hidden", "true");
+    copy.style.cssText = `position:absolute;visibility:hidden;pointer-events:none;margin:0;width:${story.offsetWidth}px`;
+    list.appendChild(copy);
+
+    const chrome =
+      copy.offsetHeight - copy.querySelector(".story_dd_inner").offsetHeight;
+    copy.remove();
+
+    return chrome;
+  }
+
+  // Closed stories sit lower and lower (margin-top as a share of the list's
+  // width); the open story moves to the top. Remember each story's share while
+  // it's closed and settled.
+  const closedOffsetShare = [];
+
+  // Height of the list with one story open: in a row, the open story or the
+  // lowest closed story, whichever is taller; stacked (mobile), all closed
+  // stories plus the open one.
+  function listHeightWithOneOpen(openStoryHeight) {
+    const stories = Array.from(list.querySelectorAll(".founders-stories-item"));
+    const listWidth = list.clientWidth;
+    const settledClosed = stories.filter(
+      (story) =>
+        !story.classList.contains("is-active") && !story.getAnimations().length,
+    );
+    const closedHeight = Math.min(
+      ...settledClosed.map((story) => story.offsetHeight),
+    );
+
+    if (!Number.isFinite(closedHeight)) return openStoryHeight;
+
+    const listStyle = getComputedStyle(list);
+
+    if (listStyle.flexDirection.startsWith("column")) {
+      const gap = parseFloat(listStyle.rowGap) || 0;
+
+      return (
+        openStoryHeight + (stories.length - 1) * (closedHeight + gap)
+      );
+    }
+
+    settledClosed.forEach((story) => {
+      closedOffsetShare[stories.indexOf(story)] =
+        parseFloat(getComputedStyle(story).marginTop) / listWidth;
+    });
+
+    const lowestOffset = Math.max(
+      0,
+      ...closedOffsetShare
+        .filter(Number.isFinite)
+        .map((share) => share * listWidth),
+    );
+
+    return Math.max(openStoryHeight, lowestOffset + closedHeight);
+  }
+
+  function syncStoryHeight() {
+    const previous = list.style.getPropertyValue("--story-open-h");
+
+    // Measure each story's own content without the shared height.
+    list.classList.remove("is-compact", "is-capped");
+    list.style.removeProperty("--story-dd-h");
+    list.style.removeProperty("--story-open-h");
+
+    const chrome = openStoryChrome();
+    const nav = document.querySelector(".nav_component");
+    const screenHeight = screenProbe.offsetHeight || window.innerHeight;
+    const maxContent =
+      screenHeight - (nav ? nav.offsetHeight : 0) - chrome - screenMargin;
+
+    let content = tallestContent();
+    if (content > maxContent) {
+      list.classList.add("is-compact");
+      content = tallestContent();
+    }
+    if (content > maxContent) list.classList.add("is-capped");
+    content = Math.ceil(Math.min(content, maxContent));
+    if (content <= 0) return;
+
+    list.style.setProperty("--story-dd-h", `${content}px`);
+    list.style.setProperty(
+      "--story-open-h",
+      `${Math.ceil(listHeightWithOneOpen(content + chrome))}px`,
+    );
+
+    // Later sections' scroll animations depend on this section's height.
+    if (list.style.getPropertyValue("--story-open-h") !== previous) {
+      window.ScrollTrigger?.refresh();
+    }
+  }
+
+  // The logos add height once they arrive. Load them now rather than lazily,
+  // so the measured height is final before the section comes into view.
+  list.querySelectorAll(".story_dd_inner img").forEach((img) => {
+    img.loading = "eager";
+
+    if (!img.complete) {
+      img.addEventListener("load", syncStoryHeight, { once: true });
+    }
+  });
+
+  syncStoryHeight();
+
+  if (document.readyState !== "complete") {
+    window.addEventListener("load", syncStoryHeight, { once: true });
+  }
+
+  let resizeTimer;
+  window.addEventListener(
+    "resize",
+    () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(syncStoryHeight, 150);
+    },
+    { passive: true },
+  );
+
+  // While one story closes and the next opens, the closing story can briefly
+  // reach below the open-story height; hold the list at its height until the
+  // switch (1s) is done.
+  let releaseTimer;
+
+  return function holdHeightDuringSwitch() {
+    list.style.maxHeight = `${list.offsetHeight}px`;
+    clearTimeout(releaseTimer);
+    releaseTimer = setTimeout(
+      () => list.style.removeProperty("max-height"),
+      1100,
+    );
+  };
+}
+
 function initFounderStories() {
   const section = document.querySelector("#highlight-stories");
   const storyItems = section?.querySelectorAll(".founders-stories-item");
 
   if (!section || !storyItems?.length) return;
 
+  const storyList = section.querySelector(".founders-stories-list");
+  const holdHeightDuringSwitch = storyList
+    ? initFounderStoriesHeight(storyList)
+    : () => {};
+
   function setActiveStory(activeStory) {
+    const currentStory = Array.from(storyItems).find((storyItem) =>
+      storyItem.classList.contains("is-active"),
+    );
+
+    if (currentStory && currentStory !== activeStory) holdHeightDuringSwitch();
+
     storyItems.forEach((storyItem) => {
       const isActive = storyItem === activeStory;
       storyItem.classList.toggle("is-active", isActive);
