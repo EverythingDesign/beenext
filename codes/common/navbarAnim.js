@@ -136,6 +136,23 @@ function initNavbarBackgroundState() {
     ".u-background-2, .u-background-1, .u-background-cream, .u-section, footer";
   let frame = null;
 
+  // Only full-width bands count: a white card or pill inside a dark section
+  // (e.g. the story hero's breadcrumb and quote card) would otherwise flip the
+  // nav to white for a moment as it scrolls under it.
+  function isFullWidth(element) {
+    const bounds = element.getBoundingClientRect();
+    const viewportWidth = document.documentElement.clientWidth;
+    return bounds.left <= 1 && bounds.right >= viewportWidth - 1;
+  }
+
+  function findFullWidthSurface(element) {
+    let surface = element.closest(surfaceSelector);
+    while (surface && !isFullWidth(surface)) {
+      surface = surface.parentElement?.closest(surfaceSelector) ?? null;
+    }
+    return surface;
+  }
+
   function isWhiteBackgroundAtViewportTop() {
     const probeX = Math.max(
       0,
@@ -149,7 +166,7 @@ function initNavbarBackgroundState() {
       for (const element of elementsAtTop) {
         if (element === nav || nav.contains(element)) continue;
 
-        const surface = element.closest(surfaceSelector);
+        const surface = findFullWidthSurface(element);
         if (!surface || surface === nav || nav.contains(surface)) continue;
 
         return surface.matches(lightBackgroundSelector);
@@ -158,7 +175,9 @@ function initNavbarBackgroundState() {
 
     return whiteBackgrounds.some((background) => {
       const bounds = background.getBoundingClientRect();
-      return bounds.top <= probeY && bounds.bottom > probeY;
+      return (
+        bounds.top <= probeY && bounds.bottom > probeY && isFullWidth(background)
+      );
     });
   }
 
