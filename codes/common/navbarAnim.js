@@ -128,10 +128,18 @@ function initNavbarBackgroundState() {
   const whiteBackgrounds = [
     ...document.querySelectorAll(lightBackgroundSelector),
   ];
+  // Sections marked data-nav-transparent in Webflow (e.g. the home hero) show
+  // through the nav while they cover it.
+  const transparentSections = [
+    ...document.querySelectorAll("[data-nav-transparent]"),
+  ];
 
-  if (!nav || !whiteBackgrounds.length) return;
+  if (!nav || (!whiteBackgrounds.length && !transparentSections.length)) {
+    return;
+  }
 
   const whiteBackgroundClass = "is-white-bg";
+  const transparentClass = "is-transparent";
   const surfaceSelector =
     ".u-background-2, .u-background-1, .u-background-cream, .u-section, footer";
   let frame = null;
@@ -153,7 +161,20 @@ function initNavbarBackgroundState() {
     return surface;
   }
 
+  // The nav is see-through only while one marked section covers all of it.
+  function isTransparentSectionUnderNav() {
+    // offsetHeight ignores the hide-on-scroll slide, so a nav that slides back
+    // in over the hero's last few pixels is already blue.
+    const navHeight = nav.offsetHeight;
+    return transparentSections.some((section) => {
+      const bounds = section.getBoundingClientRect();
+      return bounds.top <= 1 && bounds.bottom >= navHeight;
+    });
+  }
+
   function isWhiteBackgroundAtViewportTop() {
+    if (!whiteBackgrounds.length) return false;
+
     const probeX = Math.max(
       0,
       Math.min(window.innerWidth - 1, window.innerWidth / 2),
@@ -183,9 +204,11 @@ function initNavbarBackgroundState() {
 
   function updateNavbarBackground() {
     frame = null;
+    const isTransparent = isTransparentSectionUnderNav();
+    nav.classList.toggle(transparentClass, isTransparent);
     nav.classList.toggle(
       whiteBackgroundClass,
-      isWhiteBackgroundAtViewportTop(),
+      !isTransparent && isWhiteBackgroundAtViewportTop(),
     );
   }
 
