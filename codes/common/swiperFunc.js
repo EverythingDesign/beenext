@@ -383,6 +383,11 @@
      * Initialize Swiper without its default horizontal movement.
      */
     testimonialSwiper = new Swiper(slider, {
+      // The slides are a Webflow Collection List (role="list"), so they stay
+      // list items rather than Swiper's default role="group".
+      a11y: {
+        slideRole: 'listitem',
+      },
       virtualTranslate: true,
       speed: 0,
       allowTouchMove: true,

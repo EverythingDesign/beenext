@@ -2409,6 +2409,11 @@ function initPortfolioSwiper() {
 
 
   const portfolioSwiper = new window.Swiper(portfolioSlider, {
+    // The slides are a Webflow Collection List (role="list"), so they stay list
+    // items rather than Swiper's default role="group".
+    a11y: {
+      slideRole: "listitem",
+    },
     slidesPerView: 1.5,
     centeredSlides: true,
     initialSlide: 2,
