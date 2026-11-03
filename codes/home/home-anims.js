@@ -285,6 +285,28 @@ function initBeliefSystemTextAnimation() {
 
 }
 
+// Resolves once the element comes within rootMargin of the viewport (right
+// away in browsers without IntersectionObserver).
+function whenNearViewport(element, rootMargin) {
+  return new Promise((resolve) => {
+    if (!("IntersectionObserver" in window)) {
+      resolve();
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        observer.disconnect();
+        resolve();
+      },
+      { rootMargin },
+    );
+
+    observer.observe(element);
+  });
+}
+
 async function initBonsaiWebGPUVideo() {
   const outer = document.querySelector(".bonsai-img-outer");
   const trigger = document.querySelector(".belief-system-trigger");
@@ -330,6 +352,11 @@ async function initBonsaiWebGPUVideo() {
     console.warn("Bonsai WebGPU video: WebGPU is not available.");
     return;
   }
+
+  // The video is 4-6 MB, so it only starts downloading once the belief
+  // section is within one screen of the viewport instead of during the home
+  // intro. Until then the fallback image shows, as it does while it loads.
+  await whenNearViewport(beliefSection, "100% 0px");
 
   const video = existingVideo || document.createElement("video");
   const canvasHost = outer;
