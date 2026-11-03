@@ -36,20 +36,23 @@ function initSectionTextFade({
 
   gsap.registerPlugin(ScrollTrigger);
 
+  let started = false;
+
   function setupAnimation(attempt = 0) {
+    if (started) return;
+
     const characters = Array.from(fadeText.querySelectorAll(".char"));
 
     if (!characters.length) {
-      if (attempt >= 120) {
-        console.warn(
-          `Fade text animation (${sectionSelector}): SplitText characters were not found.`,
-        );
-        return;
-      }
+      // Splitters split text on page load, or later when the section comes
+      // near; a later split sends "bn:split" (below).
+      if (attempt >= 120) return;
 
       requestAnimationFrame(() => setupAnimation(attempt + 1));
       return;
     }
+
+    started = true;
 
     if (prefersReducedMotion) {
       gsap.set(characters, { x: 0, opacity: 1 });
@@ -73,6 +76,14 @@ function initSectionTextFade({
       },
     );
   }
+
+  document.addEventListener("bn:split", (event) => {
+    const target = event.detail?.target;
+
+    if (target && (fadeText.contains(target) || target.contains(fadeText))) {
+      setupAnimation();
+    }
+  });
 
   setupAnimation();
 }

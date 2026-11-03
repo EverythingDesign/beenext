@@ -1140,6 +1140,32 @@ function initBeliefCardAccordion() {
 
 
 // Bee Network mobile slider and desktop hover sequence
+// Runs callback once the element's text has been split into .word spans:
+// right away if it already has, otherwise when the page's text splitter
+// announces it with a "bn:split" event (the home splitter splits text further
+// down the page only once its section comes near).
+function whenTextSplit(element, callback) {
+  if (!element) return;
+
+  if (element.querySelector(".word")) {
+    callback();
+    return;
+  }
+
+  function handleSplit(event) {
+    const target = event.detail?.target;
+
+    if (!target || !(target.contains(element) || element.contains(target))) {
+      return;
+    }
+
+    document.removeEventListener("bn:split", handleSplit);
+    callback();
+  }
+
+  document.addEventListener("bn:split", handleSplit);
+}
+
 function initBeeNetworkAnimation() {
   const gsap = window.gsap;
   const isMobile = window.matchMedia("(max-width: 767px)").matches;
@@ -1228,33 +1254,35 @@ function initBeeNetworkAnimation() {
       );
 
       if (tapIndicator) {
-
-        const beeNetHeadingTl = gsap.timeline({
-          scrollTrigger: {
-            trigger: "#the-network-effect",
-            start: "top 20% ",
-            end: "bottom bottom",
-            // scrub: 1,
-            toggleActions: "play none none reverse",
-          },
+        // The home splitter splits this heading when its section comes near.
+        whenTextSplit(document.querySelector("[network-effect-heading]"), () => {
+          const beeNetHeadingTl = gsap.timeline({
+            scrollTrigger: {
+              trigger: "#the-network-effect",
+              start: "top 20% ",
+              end: "bottom bottom",
+              // scrub: 1,
+              toggleActions: "play none none reverse",
+            },
+          });
+          beeNetHeadingTl.from('[network-effect-heading] .word',
+            {
+              yPercent: 110,
+              opacity: 0,
+              duration: 1,
+              ease: 'power4.out',
+              stagger: 0.08,
+            },
+          )
+          .from(
+            tapIndicator,
+            {
+              opacity: 0,
+              duration: 0.9,
+              ease: "power2.out",
+            },"<"
+          )
         });
-        beeNetHeadingTl.from('[network-effect-heading] .word',
-          {
-            yPercent: 110,
-            opacity: 0,
-            duration: 1,
-            ease: 'power4.out',
-            stagger: 0.08,
-          },
-        )
-        .from(
-          tapIndicator,
-          {
-            opacity: 0,
-            duration: 0.9,
-            ease: "power2.out",
-          },"<"
-        )
       }
     }
   }
