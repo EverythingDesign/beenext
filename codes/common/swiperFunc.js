@@ -16,6 +16,30 @@
 
     if (!section || !slider) return;
 
+    // Splitting every testimonial into lines and building the sliders is one of
+    // the bigger jobs on the home page (about 0.5s on a throttled phone), and the
+    // section is far down the page. Set it up once the section is within one
+    // screen of the viewport instead of during the page load.
+    await new Promise((resolve) => {
+      if (!('IntersectionObserver' in window)) {
+        resolve();
+        return;
+      }
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (!entries.some((entry) => entry.isIntersecting)) return;
+          observer.disconnect();
+          resolve();
+        },
+        { rootMargin: '100% 0px' },
+      );
+
+      observer.observe(section);
+    });
+
+    const pageHeight = document.documentElement.scrollHeight;
+
     if (document.fonts?.ready) {
       await document.fonts.ready;
     }
@@ -649,4 +673,10 @@
         testimonialSwiper.update();
       };
     });
+
+    // The page's other scroll animations were measured before this ran; if
+    // setting up the testimonials changed the page height, measure them again.
+    if (document.documentElement.scrollHeight !== pageHeight) {
+      window.ScrollTrigger?.refresh();
+    }
   });
