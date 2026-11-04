@@ -2325,8 +2325,20 @@ function initBeeNetworkTabs() {
 
     setActiveNetworkItem(startingIndex);
 
+    // The home splitter splits these headings and paragraphs into words only
+    // when their section comes near. Set the animation up after that: set up
+    // earlier, a quick scroll could play it on the unsplit text, and the words
+    // split afterwards would stay hidden in their starting state.
     const fontsReady = document.fonts?.ready || Promise.resolve();
-    fontsReady.then(() => {
+    const textSplit = contents
+      .flatMap((content) => [
+        content.querySelector("[bee-network-heading]"),
+        content.querySelector("[bee-network-para]"),
+      ])
+      .filter(Boolean)
+      .map((element) => new Promise((resolve) => whenTextSplit(element, resolve)));
+
+    Promise.all([fontsReady, ...textSplit]).then(() => {
       requestAnimationFrame(setupContentAnimation);
     });
 
