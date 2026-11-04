@@ -545,7 +545,7 @@
             originalPaginationStyle,
             originalPaginationChildren,
             progressFills,
-            isParentActive: false,
+            isPlaying: false,
             onRealIndexChange: null,
           };
         })
@@ -583,7 +583,7 @@
         resetImageProgress(childCarousel, progressFills);
 
         childCarouselInstance.onRealIndexChange = () => {
-          if (!childCarouselInstance.isParentActive) return;
+          if (!childCarouselInstance.isPlaying) return;
 
           if (prefersReducedMotion) {
             resetImageProgress(childCarousel, progressFills);
@@ -599,6 +599,10 @@
         );
       });
 
+      // Swiper's autoplay checks its timer on every animation frame, so off
+      // screen it would keep the page rendering for nothing.
+      let sectionInView = !('IntersectionObserver' in window);
+
       function syncChildAutoplay() {
         const activeParentSlide = slides[testimonialSwiper.activeIndex];
 
@@ -608,13 +612,14 @@
             childCarousel,
             progressFills,
           } = childCarouselInstance;
-          const isParentActive = parentSlide === activeParentSlide;
+          const shouldPlay =
+            sectionInView && parentSlide === activeParentSlide;
 
-          if (childCarouselInstance.isParentActive === isParentActive) return;
+          if (childCarouselInstance.isPlaying === shouldPlay) return;
 
-          childCarouselInstance.isParentActive = isParentActive;
+          childCarouselInstance.isPlaying = shouldPlay;
 
-          if (isParentActive && !prefersReducedMotion) {
+          if (shouldPlay && !prefersReducedMotion) {
             childCarousel.params.autoplay.enabled = true;
             childCarousel.autoplay.start();
             updateImageProgress(childCarousel, progressFills);
@@ -629,7 +634,18 @@
       testimonialSwiper.on('slideChange', syncChildAutoplay);
       syncChildAutoplay();
 
+      const visibilityObserver = 'IntersectionObserver' in window
+        ? new IntersectionObserver(([entry]) => {
+            sectionInView = entry.isIntersecting;
+            syncChildAutoplay();
+          })
+        : null;
+
+      visibilityObserver?.observe(section);
+
       return () => {
+        visibilityObserver?.disconnect();
+
         childCarousels.forEach(({
           childCarousel,
           imageMain,

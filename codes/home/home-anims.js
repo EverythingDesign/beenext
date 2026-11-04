@@ -1827,10 +1827,14 @@ function initCommunityAnimation() {
           communitySlide,
           imageSwiper,
           progressFills,
-          isParentActive: false,
+          isPlaying: false,
         };
       },
     );
+
+    // Swiper's autoplay checks its timer on every animation frame, so off
+    // screen it would keep the page rendering for nothing.
+    let sliderInView = !("IntersectionObserver" in window);
 
     function syncNestedAutoplay() {
       const activeParentSlide =
@@ -1840,13 +1844,14 @@ function initCommunityAnimation() {
         (nestedSwiperInstance) => {
           const { communitySlide, imageSwiper, progressFills } =
             nestedSwiperInstance;
-          const isParentActive = communitySlide === activeParentSlide;
+          const shouldPlay =
+            sliderInView && communitySlide === activeParentSlide;
 
-          if (nestedSwiperInstance.isParentActive === isParentActive) return;
+          if (nestedSwiperInstance.isPlaying === shouldPlay) return;
 
-          nestedSwiperInstance.isParentActive = isParentActive;
+          nestedSwiperInstance.isPlaying = shouldPlay;
 
-          if (isParentActive) {
+          if (shouldPlay) {
             imageSwiper.params.autoplay.enabled = true;
             imageSwiper.autoplay.start();
             updateImageProgress(imageSwiper, progressFills);
@@ -1861,6 +1866,13 @@ function initCommunityAnimation() {
 
     communitySwiper.on("slideChange", syncNestedAutoplay);
     syncNestedAutoplay();
+
+    if ("IntersectionObserver" in window) {
+      new IntersectionObserver(([entry]) => {
+        sliderInView = entry.isIntersecting;
+        syncNestedAutoplay();
+      }).observe(communitySlider);
+    }
 
     communitySwiper.on("slideChange", () => {
       const activeSlide = communitySwiper.slides[communitySwiper.activeIndex];
